@@ -40,6 +40,15 @@ export default function Dashboard() {
       const total = arr.reduce((a: number, b: number) => a + Number(b || 0), 0);
       return acc + total;
     }, 0);
+
+    const revenueTotal = result.data.reduce((acc: number, r: any) => {
+      const arr = Array.isArray(r.Forecasted_Revenue)
+        ? r.Forecasted_Revenue
+        : [];
+      const total = arr.reduce((a: number, b: number) => a + Number(b || 0), 0);
+      return acc + total;
+    }, 0);
+
     const avgWeeklyForecast = forecastTotal / (result.horizon || 1);
     const avgWeeklyGrowth =
       lastWeekTotal > 0
@@ -64,7 +73,7 @@ export default function Dashboard() {
       total: v.total,
       avgPerProduct: v.products ? Math.round(v.total / v.products) : 0,
     }));
-    return { lastWeekTotal, forecastTotal, avgWeeklyGrowth, categories };
+    return { lastWeekTotal, forecastTotal, revenueTotal, avgWeeklyGrowth, categories };
   }, [result]);
 
   const runForecast = async () => {
@@ -117,103 +126,196 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="card">
-        <h2>Upload data and forecast</h2>
-        <div className="grid">
-          <label>
-            CSV file
+      {/* Upload Section - Sleek Bar */}
+      <div className="card mb-8 p-8">
+        <div className="flex flex-col md:flex-row items-end gap-6">
+          <label className="flex-1 w-full">
+            <span className="text-sm font-semibold text-gray-400 mb-2 block uppercase tracking-wider pl-1">CSV Data File</span>
             <input
               type="file"
               accept=".csv"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="w-full file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 hover:file:translate-y-[-1px] transition-all cursor-pointer text-gray-300 bg-black/20 rounded-xl border border-white/5 p-2"
+              onChange={(e) => setFile(e.target.value ? e.target.files?.[0] || null : null)}
             />
           </label>
-          <label>
-            Horizon (weeks)
-            <input
-              type="number"
-              min={1}
-              max={12}
-              value={horizon}
-              onChange={(e) =>
-                setHorizon(parseInt(e.target.value || "4"))
-              }
-            />
+
+          <label className="w-full md:w-32">
+            <span className="text-sm font-semibold text-gray-400 mb-2 block uppercase tracking-wider pl-1">Horizon</span>
+            <div className="relative">
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={horizon}
+                className="w-full bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.1)] rounded-xl px-4 py-3 text-white text-center font-bold text-lg focus:border-emerald-500/50 transition-colors outline-none"
+                onChange={(e) => setHorizon(parseInt(e.target.value || "4"))}
+              />
+              <span className="absolute right-3 top-3.5 text-xs text-gray-500 font-medium">Wks</span>
+            </div>
           </label>
+
+          <div className="flex gap-3">
+            <button
+              disabled={!file || loading}
+              onClick={runForecast}
+              className="py-3 px-8 text-base shadow-lg shadow-emerald-500/20"
+            >
+              {loading ? 'Analyzing...' : 'Run Forecast'}
+            </button>
+            {result && (
+              <button
+                className="ghost py-3 px-6 text-base"
+                disabled={!result || loading}
+                onClick={download}
+                title="Download CSV"
+              >
+                ⬇ CSV
+              </button>
+            )}
+          </div>
         </div>
-        <div className="row">
-          <button disabled={!file || loading} onClick={runForecast}>
-            Run forecast
-          </button>
-          <button
-            className="ghost"
-            disabled={!result || loading || !file}
-            onClick={download}
-          >
-            Download CSV
-          </button>
-        </div>
+
         {error && (
-          <div className="error" style={{ marginTop: 12 }}>
-            {error}
+          <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-200 text-sm flex items-center gap-3">
+            <span className="text-xl">❌</span> {error}
           </div>
         )}
       </div>
 
       {loading && (
-        <div className="card">
-          <div>Running forecast...</div>
+        <div className="card text-center py-12">
+          <div className="animate-spin text-4xl mb-4">🌀</div>
+          <div className="text-xl font-semibold text-emerald-400">AI is analyzing your data...</div>
+          <p className="text-gray-400 mt-2">Training LSTM models and generating predictions.</p>
         </div>
       )}
 
       {overview && (
-        <div className="card">
-          <h2>Forecast Overview</h2>
-          <div className="stats">
-            <div className="stat">
-              <div className="label">Total Last Week Sales</div>
-              <div className="value">
-                {overview.lastWeekTotal.toLocaleString()} units
+        <div className="mb-12 animate-fade-in-up">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+              <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-xl shadow-lg shadow-emerald-900/20">
+                📊
+              </span>
+              <span className="tracking-tight">Forecast Overview</span>
+            </h2>
+            <div className="text-sm font-medium text-gray-400 bg-white/5 px-4 py-2 rounded-lg border border-white/5">
+              Target Horizon: <span className="text-white font-bold ml-1">{result.horizon} Weeks</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+            {/* KPI 1: Last Week Sales */}
+            <div className="relative p-6 rounded-2xl bg-[#0F1014] border border-white/5 shadow-xl hover:shadow-2xl hover:border-white/10 transition-all duration-300 group overflow-hidden">
+              <div className="absolute top-0 right-0 p-5 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
+                <svg className="w-24 h-24 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"></path></svg>
+              </div>
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Last Week Sales</div>
+                  <div className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight mt-1">
+                    {overview.lastWeekTotal.toLocaleString()} <span className="text-lg font-medium text-gray-500 ml-1">units</span>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <div className="px-2 py-1 rounded bg-white/5 border border-white/5 text-[10px] font-medium text-gray-400">
+                    Previous week actuals
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="stat">
-              <div className="label">
-                Total {result.horizon}-Week Forecast
+
+            {/* KPI 2: AI Forecast */}
+            <div className="relative p-6 rounded-2xl bg-[#0F1014] border border-white/5 shadow-xl hover:shadow-2xl hover:border-blue-500/20 transition-all duration-300 group overflow-hidden">
+              <div className="absolute top-0 right-[-10px] p-5 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
+                <svg className="w-28 h-28 text-blue-400" fill="currentColor" viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"></path></svg>
               </div>
-              <div className="value">
-                {overview.forecastTotal.toLocaleString()} units
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-1">{result.horizon}-Week Forecast</div>
+                  <div className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight mt-1">
+                    {overview.forecastTotal.toLocaleString()} <span className="text-lg font-medium text-gray-500 ml-1">units</span>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-[11px] font-bold text-blue-400 uppercase tracking-wide">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span> AI Projected
+                  </span>
+                </div>
               </div>
             </div>
-            <div className="stat">
-              <div className="label">Avg Weekly Growth</div>
-              <div className="value">
-                {overview.avgWeeklyGrowth.toFixed(1)}%
+
+            {/* KPI 3: Growth Trend */}
+            <div className="relative p-6 rounded-2xl bg-[#0F1014] border border-white/5 shadow-xl hover:shadow-2xl hover:border-purple-500/20 transition-all duration-300 group overflow-hidden">
+              <div className="absolute top-0 right-0 p-5 opacity-5 group-hover:opacity-10 transition-opacity transform group-hover:scale-110 duration-500">
+                <svg className="w-24 h-24 text-purple-400" fill="currentColor" viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"></path></svg>
+              </div>
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Avg Weekly Growth</div>
+                  <div className={`text-3xl lg:text-4xl font-extrabold tracking-tight mt-1 ${overview.avgWeeklyGrowth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {overview.avgWeeklyGrowth > 0 ? '+' : ''}{overview.avgWeeklyGrowth.toFixed(1)}%
+                  </div>
+                </div>
+                <div className="mt-4">
+                  {overview.avgWeeklyGrowth >= 0 ? (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-medium text-emerald-400">
+                      High Demand Expected 🚀
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-[11px] font-medium text-amber-400">
+                      Seasonal Decline ⚠️
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* KPI 4: Revenue */}
+            <div className="relative p-6 rounded-2xl bg-gradient-to-br from-emerald-950/[0.4] to-[#0F1014] border border-emerald-500/20 shadow-xl hover:shadow-emerald-900/20 transition-all duration-300 group overflow-hidden">
+              <div className="absolute -right-6 -top-6 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all"></div>
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div>
+                  <div className="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-1">Revenue Forecast</div>
+                  <div className="text-3xl lg:text-4xl font-extrabold text-white tracking-tight mt-1">
+                    ₹{overview.revenueTotal.toLocaleString()}
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="inline-block px-2 py-1 rounded bg-black/20 text-[10px] font-medium text-emerald-200/70">
+                    Estimated from unit forecast
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
 
       {overview && (
-        <div className="card">
-          <h2>Category-wise Forecast</h2>
-          <div className="table">
-            <table>
+        <div className="card p-0 overflow-hidden mb-8 border border-[rgba(255,255,255,0.08)]">
+          <div className="p-6 border-b border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)]">
+            <h2 className="text-xl font-bold m-0">Category-wise Breakdown</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr>
-                  <th>Category</th>
-                  <th>Products</th>
-                  <th>Total_Forecast</th>
-                  <th>Avg_per_Product</th>
+                <tr className="border-b border-[rgba(255,255,255,0.08)] text-gray-400 text-sm uppercase tracking-wider">
+                  <th className="p-4 font-semibold">Category</th>
+                  <th className="p-4 font-semibold">Products</th>
+                  <th className="p-4 font-semibold">Total Forecast</th>
+                  <th className="p-4 font-semibold">Avg / Product</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="text-white">
                 {overview.categories.map((c: any, idx: number) => (
-                  <tr key={idx}>
-                    <td>{c.category}</td>
-                    <td>{c.products}</td>
-                    <td>{c.total}</td>
-                    <td>{c.avgPerProduct}</td>
+                  <tr key={idx} className="border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                    <td className="p-4 font-medium">{c.category}</td>
+                    <td className="p-4 text-gray-300">{c.products}</td>
+                    <td className="p-4 text-emerald-300 font-medium">{c.total.toLocaleString()}</td>
+                    <td className="p-4 text-gray-400">{c.avgPerProduct.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -223,248 +325,361 @@ export default function Dashboard() {
       )}
 
       {result && (
-        <div className="card">
-          <div className="tabs">
-            <button
-              className={`tab ${activeTab === "results" ? "active" : ""}`}
-              onClick={() => setActiveTab("results")}
-            >
-              Results
-            </button>
-            <button
-              className={`tab ${activeTab === "alerts" ? "active" : ""}`}
-              onClick={() => setActiveTab("alerts")}
-            >
-              Alerts
-            </button>
-            <button
-              className={`tab ${activeTab === "report" ? "active" : ""}`}
-              onClick={() => setActiveTab("report")}
-            >
-              Report
-            </button>
+        <div className="card p-0 overflow-hidden border border-[rgba(255,255,255,0.08)]">
+          <div className="flex border-b border-[rgba(255,255,255,0.08)]">
+            {['results', 'alerts', 'report'].map((tab) => (
+              <button
+                key={tab}
+                className={`flex-1 py-4 text-sm font-bold uppercase tracking-wide transition-all ${activeTab === tab
+                  ? 'bg-emerald-600/20 text-emerald-400 border-b-2 border-emerald-500'
+                  : 'text-gray-400 hover:text-white hover:bg-[rgba(255,255,255,0.02)]'
+                  }`}
+                onClick={() => setActiveTab(tab as any)}
+              >
+                {tab}
+              </button>
+            ))}
           </div>
 
-          {activeTab === "results" && (
-            <>
-              <h2>Results</h2>
-              <div className="metrics">
-                <div className="metric">
-                  <div className="label">Products</div>
-                  <div className="value">{result.products}</div>
+          <div className="p-6">
+            {activeTab === "results" && (
+              <>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold m-0">Detailed Forecast Results</h2>
+                  <div className="text-sm text-gray-400 bg-[rgba(255,255,255,0.05)] px-3 py-1 rounded-full">
+                    Horizon: <span className="text-white font-semibold">{result.horizon} Weeks</span>
+                  </div>
                 </div>
-                <div className="metric">
-                  <div className="label">Horizon</div>
-                  <div className="value">{result.horizon} weeks</div>
-                </div>
-              </div>
-              <div className="table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Product_ID</th>
-                      <th>Name</th>
-                      <th>Category</th>
-                      <th>Last_Week</th>
-                      <th>Last_Week_Sales</th>
-                      {Array.from({ length: result.horizon }).map((_, i) => (
-                        <th key={i}>Week_{i + 1}_Final</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.data.map((r: any) => (
-                      <tr key={r.Product_ID}>
-                        <td>{r.Product_ID}</td>
-                        <td>{r.Product_Name}</td>
-                        <td>{r.Category}</td>
-                        <td>{r.Last_Week}</td>
-                        <td>{r.Last_Week_Sales}</td>
-                        {r.Final_Forecasted_Sales.map(
-                          (v: number, idx: number) => (
-                            <td key={idx}>{v}</td>
-                          )
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
 
-              {/* 📊 Add Chart Here */}
-              {result.data && result.data.length > 0 && (
-                <ForecastChart data={result.data} />
-              )}
-
-              <div className="row" style={{ marginTop: 12 }}>
-                <button
-                  className="ghost"
-                  disabled={!result || loading || !file}
-                  onClick={download}
-                >
-                  Download CSV
-                </button>
-              </div>
-            </>
-          )}
-
-          {activeTab === "alerts" && (
-            <>
-              <h2>Alerts</h2>
-              {alerts && alerts.length > 0 ? (
-                <div className="table">
-                  <table>
+                <div className="overflow-x-auto rounded-xl border border-[rgba(255,255,255,0.08)]">
+                  <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr>
-                        <th>Product</th>
-                        <th>Forecast</th>
-                        <th>Alert</th>
-                        <th>Created</th>
+                      <tr className="bg-[rgba(255,255,255,0.02)] text-gray-400 text-xs uppercase tracking-wider border-b border-[rgba(255,255,255,0.08)]">
+                        <th className="p-4 font-semibold">Product</th>
+                        <th className="p-4 font-semibold text-center">Trend</th>
+                        <th className="p-4 font-semibold">Category</th>
+                        <th className="p-4 font-semibold text-right">Price</th>
+                        <th className="p-4 font-semibold text-right">Last Wk</th>
+                        <th className="p-4 font-semibold text-right text-emerald-400">Est. Revenue</th>
+                        {Array.from({ length: result.horizon }).map((_, i) => (
+                          <th key={i} className="p-4 font-semibold text-center bg-[rgba(255,255,255,0.01)] text-blue-300">W{i + 1}</th>
+                        ))}
                       </tr>
                     </thead>
-                    <tbody>
-                      {alerts.map((a, idx) => {
-                        // Match alert product with forecast result
-                        const productInfo = result?.data?.find(
-                          (r: any) => r.Product_ID === a.product
-                        );
-                        const productName = productInfo?.Product_Name || a.product;
-                        const productId = a.product;
-
-                        // Replace product ID in alert message with "Name (ID)"
-                        let alertMsg = a.alert;
-                        if (alertMsg.includes(productId)) {
-                          alertMsg = alertMsg.replace(
-                            productId,
-                            `${productName} (${productId})`
-                          );
-                        }
-
-                        // Determine color style for alert text
-                        let alertStyle: React.CSSProperties = { color: "#fff" };
-                        if (/high demand/i.test(alertMsg)) {
-                          alertStyle = { color: "#f87171", fontWeight: 600 }; // red
-                        } else if (/balanced/i.test(alertMsg)) {
-                          alertStyle = { color: "#4ade80", fontWeight: 600 }; // green
-                        } else if (/low stock/i.test(alertMsg) || /restock/i.test(alertMsg)) {
-                          alertStyle = { color: "#fbbf24", fontWeight: 600 }; // orange/yellow
-                        }
-
+                    <tbody className="text-sm text-gray-200">
+                      {result.data.map((r: any) => {
+                        const totalRev = (r.Forecasted_Revenue || []).reduce((a: number, b: number) => a + b, 0);
                         return (
-                          <tr key={idx}>
-                            <td>
-                              {productName} ({productId})
+                          <tr key={r.Product_ID} className="border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                            <td className="p-4">
+                              <div className="font-bold text-white">{r.Product_Name}</div>
+                              <div className="text-xs text-gray-500 font-mono mt-0.5">{r.Product_ID}</div>
                             </td>
-                            <td>{a.forecast ?? "n/a"}</td>
-                            <td style={alertStyle}>{alertMsg}</td>
-                            <td>{a.created_at}</td>
+                            <td className="p-4 text-center">
+                              {r.Trend_Symbol === "↑" ? <span className="inline-block w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-center leading-6">↑</span> :
+                                r.Trend_Symbol === "↓" ? <span className="inline-block w-6 h-6 rounded-full bg-red-500/20 text-red-400 text-center leading-6">↓</span> :
+                                  <span className="inline-block w-6 h-6 rounded-full bg-gray-500/20 text-gray-400 text-center leading-6">→</span>}
+                            </td>
+                            <td className="p-4 text-gray-300">{r.Category}</td>
+                            <td className="p-4 text-right font-mono text-gray-400">₹{r.Price || 0}</td>
+                            <td className="p-4 text-right font-mono font-medium">{r.Last_Week_Sales}</td>
+                            <td className="p-4 text-right font-mono text-emerald-400 font-bold">₹{totalRev.toLocaleString()}</td>
+                            {r.Final_Forecasted_Sales.map(
+                              (v: number, idx: number) => (
+                                <td key={idx} className="p-4 text-center font-mono text-blue-200 bg-[rgba(59,130,246,0.02)]">{v}</td>
+                              )
+                            )}
                           </tr>
-                        );
+                        )
                       })}
                     </tbody>
                   </table>
                 </div>
-              ) : (
-                <div>No alerts yet</div>
-              )}
-            </>
-          )}
+                {/* Heatmap Section */}
+                <div style={{ marginTop: 32 }}>
+                  <h2>🔥 Demand Heatmap</h2>
+                  <div style={{ overflowX: "auto", paddingBottom: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: `150px repeat(${result.horizon}, 1fr)`, gap: 4 }}>
+                      {/* Header */}
+                      <div style={{ fontWeight: "bold", padding: 8 }}>Product</div>
+                      {Array.from({ length: result.horizon }).map((_, i) => (
+                        <div key={i} style={{ fontWeight: "bold", textAlign: "center", padding: 8 }}>W{i + 1}</div>
+                      ))}
+
+                      {/* Rows */}
+                      {result.data.map((r: any) => (
+                        <React.Fragment key={r.Product_ID}>
+                          <div style={{ padding: "8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: 13 }}>
+                            {r.Product_Name}
+                          </div>
+                          {r.Final_Forecasted_Sales.map((val: number, idx: number) => {
+                            // Simple opacity based on max value in row
+                            const maxVal = Math.max(...r.Final_Forecasted_Sales, 1);
+                            const intensity = val / maxVal;
+                            return (
+                              <div key={idx} style={{
+                                backgroundColor: `rgba(35, 83, 71, ${0.2 + (intensity * 0.8)})`,
+                                color: intensity > 0.6 ? "#fff" : "#ddd",
+                                textAlign: "center",
+                                padding: "8px",
+                                borderRadius: 4,
+                                fontSize: 12
+                              }}>
+                                {val}
+                              </div>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 📊 Add Chart Here */}
+                {result.data && result.data.length > 0 && (
+                  <ForecastChart data={result.data} />
+                )}
 
 
+              </>
+            )}
 
-          {activeTab === "report" && (
-            <>
-              <h2>📊 AI Forecast Report</h2>
-              <div className="row" style={{ gap: "8px", marginBottom: "12px" }}>
-                <button
-                  onClick={() =>
-                    window.open(`${import.meta.env.VITE_API_BASE || "http://localhost:8000"}/report/view?token=${token}`, "_blank")
-                  }
-                >
-                  🔍 View Report
-                </button>
+            {activeTab === "alerts" && (
+              <div className="animate-fade-in-up">
 
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    const link = document.createElement("a");
-                    link.href = `${import.meta.env.VITE_API_BASE || "http://localhost:8000"}/report/download?token=${token}`;
-                    link.setAttribute("download", "Niyojan_Forecast_Report.pdf");
-                    document.body.appendChild(link);
-                    link.click();
-                    link.remove();
-                  }}
-                >
-                  ⬇️ Download Report
-                </button>
+                {/* Alerts Header, Counts & Summary */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                  <div>
+                    <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                      <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 text-white text-xl shadow-lg shadow-orange-900/20">
+                        🔔
+                      </span>
+                      <span className="tracking-tight">System Alerts</span>
+                    </h2>
+                    <p className="text-gray-400 text-sm mt-1 ml-13">Real-time inventory signals & forecasting insights</p>
+                  </div>
+
+                  {alerts && alerts.length > 0 && (
+                    <div className="flex gap-4">
+                      {/* Stable Count */}
+                      <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-[#0F1014] border border-emerald-500/20 shadow-lg">
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                        <span className="text-gray-400 text-sm font-semibold uppercase tracking-wider">Stable</span>
+                        <span className="text-white text-xl font-bold ml-1">{alerts.filter(a => /balanced|stable/i.test(a.alert)).length}</span>
+                      </div>
+
+                      {/* Monitor Count */}
+                      <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-[#0F1014] border border-amber-500/20 shadow-lg">
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></div>
+                        <span className="text-gray-400 text-sm font-semibold uppercase tracking-wider">Monitor</span>
+                        <span className="text-white text-xl font-bold ml-1">{alerts.filter(a => /slowing|slightly upwards|monitor/i.test(a.alert)).length}</span>
+                      </div>
+
+                      {/* Action Count */}
+                      <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-[#0F1014] border border-red-500/20 shadow-lg">
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-bounce"></div>
+                        <span className="text-gray-400 text-sm font-semibold uppercase tracking-wider">Action</span>
+                        <span className="text-white text-xl font-bold ml-1">{alerts.filter(a => /high acceleration|critical|zero sales/i.test(a.alert)).length}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {alerts && alerts.length > 0 ? (
+                  <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#0F1014] shadow-2xl relative">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500 opacity-20"></div>
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-white/[0.02] text-gray-500 text-xs font-bold uppercase tracking-widest border-b border-white/5">
+                          <th className="p-5 font-semibold">Product Details</th>
+                          <th className="p-5 font-semibold text-right">Forecast</th>
+                          <th className="p-5 font-semibold">Status Signal</th>
+                          <th className="p-5 font-semibold text-right">Timeline</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {alerts.sort((a, b) => {
+                          // Sort Critical -> Monitor -> Stable
+                          const getWeight = (msg: string) => {
+                            if (/high acceleration|critical|zero sales/i.test(msg)) return 3;
+                            if (/slowing|slightly upwards|monitor/i.test(msg)) return 2;
+                            return 1;
+                          }
+                          return getWeight(b.alert) - getWeight(a.alert);
+                        }).map((a, idx) => {
+                          // Match alert product with forecast result
+                          const productInfo = result?.data?.find(
+                            (r: any) => r.Product_ID === a.product
+                          );
+                          const productName = productInfo?.Product_Name || a.product;
+                          const productId = a.product;
+
+                          // Determine Status Props
+                          let statusColor = "emerald";
+                          let statusLabel = "Stable";
+                          let statusIcon = "✓";
+                          let rowClass = "hover:bg-emerald-500/[0.02] border-l-4 border-l-transparent hover:border-l-emerald-500";
+
+                          if (/high acceleration|critical|zero sales/i.test(a.alert)) {
+                            statusColor = "red";
+                            statusLabel = "Restock Needed";
+                            statusIcon = "🔥";
+                            rowClass = "bg-red-500/[0.02] hover:bg-red-500/[0.05] border-l-4 border-l-red-500/50 hover:border-l-red-500";
+                          } else if (/slowing|slightly upwards|monitor/i.test(a.alert)) {
+                            statusColor = "amber";
+                            statusLabel = "Monitor";
+                            statusIcon = "⚠️";
+                            rowClass = "hover:bg-amber-500/[0.02] border-l-4 border-l-transparent hover:border-l-amber-500";
+                          }
+
+                          return (
+                            <tr key={idx} className={`group transition-all duration-200 ${rowClass}`}>
+                              {/* Product */}
+                              <td className="p-5">
+                                <div className="flex flex-col gap-1">
+                                  <span className="font-bold text-white text-lg group-hover:text-primary transition-colors">{productName}</span>
+                                  <span className="text-gray-500 text-xs font-mono uppercase tracking-widest">ID: {productId}</span>
+                                </div>
+                              </td>
+
+                              {/* Forecast */}
+                              <td className="p-5 text-right">
+                                <span className="font-mono text-xl font-bold text-gray-200">{a.forecast?.toLocaleString() ?? "—"}</span>
+                                <span className="text-sm text-gray-500 ml-1">units</span>
+                              </td>
+
+                              {/* Alert Status */}
+                              <td className="p-5">
+                                <div className="flex flex-col items-start gap-2">
+                                  <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-bold uppercase tracking-wide border bg-${statusColor}-500/10 border-${statusColor}-500/20 text-${statusColor}-400`}>
+                                    <span>{statusIcon}</span> {statusLabel}
+                                  </span>
+                                  {/* Clean message - remove ID if present */}
+                                  <span className="text-sm text-gray-400 font-medium line-clamp-1 max-w-[350px]" title={a.alert}>
+                                    {a.alert.replace(productId, '').replace('Alert for product :', '').trim()}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Created */}
+                              <td className="p-5 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-gray-300 text-base font-medium">{a.created_at.split(' ')[0]}</span>
+                                  <span className="text-gray-500 text-sm">{a.created_at.split(' ')[1]}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-20 bg-white/5 rounded-2xl border border-white/5 border-dashed">
+                    <span className="text-4xl mb-4 opacity-50">🔕</span>
+                    <h3 className="text-gray-400 font-medium">No alerts triggered</h3>
+                    <p className="text-gray-600 text-sm mt-1">Everything looks stable for now.</p>
+                  </div>
+                )}
               </div>
+            )}
 
-              {/* Inline PDF Preview */}
-              <div
-                style={{
-                  marginTop: "16px",
-                  border: "1px solid #ccc",
-                  borderRadius: "8px",
-                  overflow: "hidden",
-                  height: "600px",
-                }}
-              >
-                <iframe
-                  src={`${import.meta.env.VITE_API_BASE || "http://localhost:8000"}/report/view?token=${token}`}
-                  title="Niyojan Forecast Report"
-                  style={{ width: "100%", height: "100%", border: "none" }}
-                ></iframe>
-              </div>
 
-              {/* Email Sending Section */}
-              <div className="row" style={{ marginTop: "20px" }}>
-                <input
-                  type="email"
-                  placeholder="Enter recipient email (admin only)"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: "8px",
-                    borderRadius: "4px",
-                    border: "1px solid #ccc",
-                  }}
-                />
-                <button
-                  onClick={async () => {
-                    if (!email) return alert("Please enter an email address");
-                    try {
-                      const res = await fetch(
-                        `${import.meta.env.VITE_API_BASE || "http://localhost:8000"}/send-report`,
-                        {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                          },
-                          body: JSON.stringify({ recipients: [email] }),
-                        }
-                      );
-                      if (res.ok) {
-                        alert(`✅ Report sent successfully to ${email}`);
-                        setEmail("");
-                      } else {
-                        const data = await res.json();
-                        alert(`❌ Failed: ${data.detail || "Server error"}`);
-                      }
-                    } catch (err) {
-                      console.error(err);
-                      alert("Network error while sending email");
+
+            {activeTab === "report" && (
+              <>
+                <h2>📊 AI Forecast Report</h2>
+                <div className="row" style={{ gap: "8px", marginBottom: "12px" }}>
+                  <button
+                    onClick={() =>
+                      window.open(`${import.meta.env.VITE_API_BASE || "http://localhost:8000"}/report/view?token=${token}`, "_blank")
                     }
+                  >
+                    🔍 View Report
+                  </button>
+
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      const link = document.createElement("a");
+                      link.href = `${import.meta.env.VITE_API_BASE || "http://localhost:8000"}/report/download?token=${token}`;
+                      link.setAttribute("download", "Niyojan_Forecast_Report.pdf");
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                    }}
+                  >
+                    ⬇️ Download Report
+                  </button>
+                </div>
+
+                {/* Inline PDF Preview */}
+                <div
+                  style={{
+                    marginTop: "16px",
+                    border: "1px solid #ccc",
+                    borderRadius: "8px",
+                    overflow: "hidden",
+                    height: "600px",
                   }}
                 >
-                  📧 Send Report
-                </button>
-              </div>
-            </>
-          )}
+                  <iframe
+                    src={`${import.meta.env.VITE_API_BASE || "http://localhost:8000"}/report/view?token=${token}`}
+                    title="Niyojan Forecast Report"
+                    style={{ width: "100%", height: "100%", border: "none" }}
+                  ></iframe>
+                </div>
+
+                {/* Email Sending Section */}
+                <div className="row" style={{ marginTop: "20px" }}>
+                  <input
+                    type="email"
+                    placeholder="Enter recipient email (admin only)"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      borderRadius: "4px",
+                      border: "1px solid #ccc",
+                    }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!email) return alert("Please enter an email address");
+                      try {
+                        const res = await fetch(
+                          `${import.meta.env.VITE_API_BASE || "http://localhost:8000"}/send-report`,
+                          {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({ recipients: [email] }),
+                          }
+                        );
+                        if (res.ok) {
+                          alert(`✅ Report sent successfully to ${email}`);
+                          setEmail("");
+                        } else {
+                          const data = await res.json();
+                          alert(`❌ Failed: ${data.detail || "Server error"}`);
+                        }
+                      } catch (err) {
+                        console.error(err);
+                        alert("Network error while sending email");
+                      }
+                    }}
+                  >
+                    📧 Send Report
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
-    </Layout>
+    </Layout >
   );
 }

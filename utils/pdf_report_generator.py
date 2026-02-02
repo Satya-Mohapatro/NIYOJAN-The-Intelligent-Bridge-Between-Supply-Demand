@@ -85,13 +85,25 @@ def generate_pdf_report(output_path, overview, categories, top_products, alerts)
 
     # ===== OVERVIEW =====
     elements.append(Paragraph(replace_emojis_with_icons("📊 Overview"), styles['SectionTitle']))
+    # growth string formatting
+    growth_val = float(overview.get('avg_growth', 0))
+    growth_str = f"{growth_val:.2f}%"
+    
+    # Context label logic
+    if growth_val < -10:
+        growth_str += " (Seasonal decline probable)"
+    elif growth_val < 0:
+        growth_str += " (Slight dip)"
+    elif growth_val > 10:
+        growth_str += " (Strong upward trend)"
+    
     overview_data = [
         ["📦 Products Analyzed", str(overview.get("products", "N/A"))],
         ["⏱️ Forecast Horizon", f"{overview.get('horizon', 'N/A')} weeks"],
         ["📈 Total Forecast", f"{overview.get('forecast_total', 0):,} units"],
-        ["📊 Avg Weekly Growth", f"{overview.get('avg_growth', 0):.2f}%"],
+        ["📊 Avg Weekly Growth", growth_str],
     ]
-    overview_table = Table(overview_data, colWidths=[200, 200])
+    overview_table = Table(overview_data, colWidths=[200, 250])
     overview_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#d9f7e6")),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
@@ -119,16 +131,31 @@ def generate_pdf_report(output_path, overview, categories, top_products, alerts)
     elements += [cat_table, Spacer(1, 12)]
 
     # ===== TOP PRODUCT INSIGHTS =====
-    elements.append(Paragraph(replace_emojis_with_icons("🏆 Top Product Insights"), styles['SectionTitle']))
+    elements.append(Paragraph(replace_emojis_with_icons("🏆 Top Product Insights (Revenue & Trends)"), styles['SectionTitle']))
     for idx, prod in enumerate(top_products, start=1):
         rank_icon = get_rank_icon(idx)
+        trend = prod.get("trend", "")
+        # Emphasize growth
+        if "High" in trend or "upward" in trend:
+            trend = f"<b>{trend}</b>"
+        
         if rank_icon:
             text = f'<img src="{rank_icon}" width="18" height="18" valign="middle"/> ' \
-                f'<b>{prod["name"]} ({prod["id"]})</b> — {prod["trend"]}'
+                f'<b>{prod["name"]} ({prod["id"]})</b> — {trend}'
         else:
-            text = f"💡 <b>{prod['name']} ({prod['id']})</b> — {prod['trend']}"
+            text = f"💡 <b>{prod['name']} ({prod['id']})</b> — {trend}"
         elements.append(Paragraph(replace_emojis_with_icons(text), styles['BodyTextSmall']))
     elements.append(Spacer(1, 12))
+
+    # ===== LONG-TERM FORECAST =====
+    # If horizon > 4, maybe add a new table or mentions
+    if overview.get('horizon', 4) > 4:
+        elements.append(Paragraph(replace_emojis_with_icons(f"📅 Extended Forecast ({overview['horizon']} Weeks)"), styles['SectionTitle']))
+        elements.append(Paragraph(
+            "Detailed weekly breakdown available in the attached CSV.",
+            styles['BodyTextSmall']
+        ))
+        elements.append(Spacer(1, 12))
 
 
     # ===== ALERTS =====
