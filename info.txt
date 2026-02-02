@@ -1,0 +1,4 @@
+uvicorn backend.main:app
+
+cd frontend
+npm run dev

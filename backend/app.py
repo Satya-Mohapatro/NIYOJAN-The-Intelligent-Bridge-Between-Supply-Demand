@@ -1,0 +1,514 @@
+# backend/app.py
+from email.message import EmailMessage
+import smtplib
+from dotenv import load_dotenv
+load_dotenv()
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, Header, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta
+import os
+import io
+import csv
+import sqlite3
+import jwt
+import pandas as pd
+import numpy as np
+import logging
+
+# Local modules (expected in repository)
+import database.db_manager as db_manager
+from utils.decision_engine import analyze_forecast
+from utils.forecast_engine import predict_demand
+
+# Optional utilities
+try:
+    from utils.pdf_report_generator import generate_pdf_report
+    PDF_GEN_AVAILABLE = True
+except Exception:
+    PDF_GEN_AVAILABLE = False
+
+try:
+    from utils.email_handler import send_email_report # type: ignore
+    EMAIL_HANDLER_AVAILABLE = True
+except Exception:
+    EMAIL_HANDLER_AVAILABLE = False
+
+# -------------------------
+# CONFIG & SETUP
+# -------------------------
+logger = logging.getLogger("niyojan")
+logging.basicConfig(level=logging.INFO)
+
+JWT_SECRET = os.getenv("JWT_SECRET", "niyojan_default_secret_change_me")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "720"))
+
+BASE_DIR = os.path.dirname(__file__)
+DB_PATH = os.path.join(BASE_DIR, "..", "database", "niyojan.db")
+REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+REQUIRED_COLUMNS = ['Product_ID', 'Product_Name', 'Category', 'Week', 'Sales_Quantity']
+
+# Initialize DB + default admin (if db_manager implements these)
+try:
+    db_manager.init_db()
+    db_manager.ensure_default_admin()
+except Exception as e:
+    logger.warning("db_manager init/ensure_default_admin failed: %s", e)
+
+app = FastAPI(title="Niyojan Demand Forecasting API", version="1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# -------------------------
+# JWT helpers
+# -------------------------
+def create_access_token(email: str, role: str, expires_delta: Optional[timedelta] = None) -> str:
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=JWT_EXPIRE_MINUTES))
+    payload = {"sub": email, "role": role, "exp": int(expire.timestamp())}
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return token
+
+def decode_token(token: str) -> Dict[str, Any]:
+    try:
+        data = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return data
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+def get_token_from_header(authorization: Optional[str] = Header(None), token: Optional[str] = Query(None)) -> str:
+    # Accept either Authorization: Bearer <token> or ?token=...
+    if token:
+        return token
+    if authorization:
+        if authorization.lower().startswith("bearer "):
+            return authorization.split(" ", 1)[1].strip()
+    raise HTTPException(status_code=401, detail="Unauthorized: token required")
+
+def get_current_user(token: str = Depends(get_token_from_header)):
+    payload = decode_token(token)
+    email = payload.get("sub")
+    role = payload.get("role", "analyst")
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    user = db_manager.find_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return {"email": email, "role": role}
+
+def require_role(role: str):
+    def checker(current_user=Depends(get_current_user)):
+        if current_user["role"] != role:
+            raise HTTPException(status_code=403, detail="Forbidden: insufficient privileges")
+        return current_user
+    return checker
+
+# -------------------------
+# Models
+# -------------------------
+class AuthToken(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class CreateUserBody(BaseModel):
+    email: str
+    name: Optional[str] = None
+    password: str
+    role: Optional[str] = "analyst"
+
+class ForecastResponseModel(BaseModel):
+    products: int
+    horizon: int
+    data: List[Dict[str, Any]]
+
+class SendReportBody(BaseModel):
+    recipients: List[str]
+
+# -------------------------
+# Small helpers
+# -------------------------
+def sqlite3_connect():
+    # centralized DB path
+    con = sqlite3.connect(os.path.join(os.path.dirname(__file__), "..", "database", "niyojan.db"))
+    con.row_factory = sqlite3.Row
+    return con
+
+def build_report_payload_from_db(limit: int = 50):
+    """Fetch latest forecasts and alerts and compute overview, categories and top_products."""
+    try:
+        alerts = db_manager.get_all_alerts() or []
+    except Exception:
+        alerts = []
+    try:
+        forecasts_raw = db_manager.get_all_forecasts() if hasattr(db_manager, 'get_all_forecasts') else [] # type: ignore
+    except Exception:
+        forecasts_raw = []
+
+    # Basic overview
+    products_set = set(a["product"] for a in alerts) if alerts else set()
+    forecast_total = sum(a.get("forecast", 0) or 0 for a in alerts)
+    overview = {
+        "products": len(products_set),
+        "horizon": 4,
+        "forecast_total": int(forecast_total),
+        "avg_growth": 0.0
+    }
+
+    # categories derived from forecasts_raw (if available)
+    category_map = {}
+    for f in forecasts_raw:
+        cat = f.get("category") or "Unknown"
+        val = f.get("forecast") or 0
+        entry = category_map.setdefault(cat, {"products": 0, "total": 0})
+        entry["products"] += 1
+        entry["total"] += int(val)
+    categories = [
+        {"category": k, "products": v["products"], "total": v["total"], "avgPerProduct": v["total"] // v["products"] if v["products"] else 0}
+        for k, v in category_map.items()
+    ] or [
+        # fallback sample if none
+    ]
+
+    # top_products: derive from alerts or forecasts
+    top_products = []
+    # Prefer forecasts_raw if it contains product_name / totals
+    if forecasts_raw:
+        # compute sum per product id (if forecasts_raw contains product/date info)
+        totals = {}
+        for f in forecasts_raw:
+            pid = f.get("product")
+            totals[pid] = totals.get(pid, 0) + int(f.get("forecast") or 0)
+        sorted_top = sorted(totals.items(), key=lambda x: x[1], reverse=True)[:3]
+        for pid, tot in sorted_top:
+            top_products.append({"id": pid, "name": pid, "trend": f"{tot} total forecasted units"})
+    else:
+        # fallback to alerts-based list
+        for a in alerts[:3]:
+            top_products.append({"id": a.get("product"), "name": a.get("product"), "trend": f"{int(a.get('forecast') or 0)} total forecasted units"})
+
+    return overview, categories, top_products, alerts
+
+# -------------------------
+# Health
+# -------------------------
+@app.get("/health")
+def health():
+    return {"status": "ok", "component": "niyojan-backend", "time": datetime.utcnow().isoformat()}
+
+# -------------------------
+# Auth endpoints
+# -------------------------
+@app.post("/auth/login", response_model=AuthToken)
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    # verify via db_manager
+    u = db_manager.find_user_by_email(form_data.username)
+    if not u:
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    # DEV MODE: plain-text password check
+    if form_data.password != u["password_hash"]:
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+    role = u.get("role") if u and "role" in u else "analyst"
+    token = create_access_token(form_data.username, role) # type: ignore
+    return AuthToken(access_token=token)
+
+@app.post("/users", status_code=201)
+def create_user_ep(body: CreateUserBody, current_user = Depends(require_role("admin"))):
+    try:
+        db_manager.create_user(body.email, body.name or "", body.password)
+        # optionally set role if column exists
+        try:
+            conn = sqlite3_connect()
+            cur = conn.cursor()
+            cur.execute("UPDATE users SET role = ? WHERE email = ?", (body.role or "analyst", body.email))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+        return {"ok": True}
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="Email already exists")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to create user: {e}")
+
+# -------------------------
+# Forecast endpoint (CSV upload)
+# -------------------------
+@app.post("/forecast", response_model=ForecastResponseModel)
+async def forecast_endpoint(
+    file: UploadFile = File(...),
+    horizon: int = Form(4),
+    current_user = Depends(get_current_user)
+):
+    if horizon < 1 or horizon > 12:
+        raise HTTPException(status_code=400, detail="horizon must be between 1 and 12 weeks")
+
+    # read CSV into dataframe
+    try:
+        raw = await file.read()
+        df = pd.read_csv(io.BytesIO(raw))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid CSV file: {e}")
+
+    missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing)}")
+
+    # cleanse and normalize
+    df.columns = df.columns.str.strip()
+    try:
+        df['Week'] = pd.to_datetime(df['Week'], dayfirst=True, errors='coerce')
+    except Exception:
+        df['Week'] = pd.to_datetime(df['Week'], errors='coerce')
+    if df['Week'].isna().any():
+        raise HTTPException(status_code=400, detail="Invalid dates in 'Week' column")
+
+    results = []
+    # iterate unique Product_IDs and predict horizon steps
+    for pid in df['Product_ID'].unique():
+        psub = df[df['Product_ID'] == pid].sort_values('Week')
+        sales_history = psub['Sales_Quantity'].fillna(0).astype(float).tolist()
+        if len(sales_history) < 1:
+            continue
+
+        history = sales_history.copy()
+        preds = []
+        try:
+            for _ in range(horizon):
+                next_val = float(predict_demand(str(pid), history))
+                next_val = max(0.0, next_val)
+                preds.append(next_val)
+                history.append(next_val)
+        except Exception as e:
+            logger.warning("prediction failed for %s: %s", pid, e)
+            continue
+
+        last_week_dt = psub['Week'].max()
+        # In your earlier repo you had seasonal adjustment helper; if present you can apply it.
+        # For now use preds as-is and round
+        final_preds = [int(round(x)) for x in preds]
+
+        entry = {
+            "Product_ID": str(pid),
+            "Product_Name": (psub['Product_Name'].iloc[-1] if 'Product_Name' in psub.columns else ""),
+            "Category": (psub['Category'].iloc[-1] if 'Category' in psub.columns else ""),
+            "Last_Week": last_week_dt.strftime('%Y-%m-%d'),
+            "Last_Week_Sales": int(round(psub['Sales_Quantity'].iloc[-1] if len(psub) else 0)),
+            "Forecasted_Sales": [int(round(x)) for x in preds],
+            "Final_Forecasted_Sales": final_preds
+        }
+        results.append(entry)
+
+        # persist next-week forecast and generate alert
+        try:
+            next_week_val = float(final_preds[0]) if final_preds else float(preds[0])
+            db_manager.insert_forecast(str(pid), next_week_val)
+            last_stock_proxy = float(psub['Sales_Quantity'].iloc[-1] if len(psub) else 0.0)
+            alert_msg = analyze_forecast(str(pid), next_week_val, last_stock_proxy)
+            db_manager.insert_alert_with_forecast(str(pid), next_week_val, alert_msg)
+        except Exception as e:
+            logger.warning("DB insert or alert generation failed for %s: %s", pid, e)
+            pass
+
+    if not results:
+        raise HTTPException(status_code=400, detail="No products with valid history found")
+
+    # prepare and return response
+    resp = {
+        "products": len(results),
+        "horizon": horizon,
+        "data": results
+    }
+    return resp
+
+# -------------------------
+# Download CSV (calls same pipeline)
+# -------------------------
+@app.post("/download")
+async def download_csv(file: UploadFile = File(...), horizon: int = Form(4), current_user = Depends(get_current_user)):
+    # call forecast endpoint functionally (avoid double-parse by calling internal logic is complicated here),
+    # simplest reliable approach: call forecast_endpoint to obtain JSON then convert to CSV
+    resp = await forecast_endpoint(file=file, horizon=horizon, current_user=current_user)
+    rows = []
+    for f in resp['data']:
+        row = {
+            'Product_ID': f['Product_ID'],
+            'Product_Name': f['Product_Name'],
+            'Category': f['Category'],
+            'Last_Week': f['Last_Week'],
+            'Last_Week_Sales': f['Last_Week_Sales']
+        }
+        for i, v in enumerate(f['Forecasted_Sales'], start=1):
+            row[f'Week_{i}_Forecast'] = v
+        for i, v in enumerate(f['Final_Forecasted_Sales'], start=1):
+            row[f'Week_{i}_Final'] = v
+        rows.append(row)
+    out_df = pd.DataFrame(rows)
+
+    output = io.StringIO()
+    out_df.to_csv(output, index=False)
+    output.seek(0)
+    filename = f"niyojan_forecast_{horizon}w_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(io.BytesIO(output.getvalue().encode('utf-8')), media_type='text/csv',
+                             headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+# -------------------------
+# Alerts & Forecast retrieval
+# -------------------------
+@app.get("/alerts")
+def alerts_endpoint(current_user = Depends(get_current_user)):
+    try:
+        alerts = db_manager.get_all_alerts()
+        return {"count": len(alerts), "data": alerts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch alerts: {e}")
+
+@app.get("/forecasts")
+def forecasts_endpoint(limit: int = Query(50, ge=1, le=1000), current_user = Depends(get_current_user)):
+    try:
+        if hasattr(db_manager, 'get_all_forecasts'):
+            data = db_manager.get_all_forecasts(limit=limit) # type: ignore
+            return {"count": len(data), "data": data}
+        # fallback: read from forecasts table directly
+        conn = sqlite3_connect()
+        cur = conn.cursor()
+        cur.execute("SELECT product, forecast, created_at FROM forecasts ORDER BY created_at DESC LIMIT ?", (limit,))
+        rows = cur.fetchall()
+        conn.close()
+        data = [{"product": r["product"], "forecast": r["forecast"], "created_at": r["created_at"]} for r in rows]
+        return {"count": len(data), "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch forecasts: {e}")
+
+# -------------------------
+# Report endpoints (text + PDF view + PDF download)
+# -------------------------
+@app.get("/report")
+def report_endpoint(current_user = Depends(get_current_user)):
+    # Prefer optional heavy report generator if available
+    if 'generate_report' in globals():
+        try:
+            text = globals().get('generate_report')()  # type: ignore
+            return {"report": text}
+        except Exception:
+            pass
+
+    # Fallback: build from DB
+    try:
+        conn = sqlite3_connect()
+        cur = conn.cursor()
+        cur.execute("SELECT product, forecast, created_at FROM forecasts ORDER BY created_at DESC LIMIT 10")
+        forecasts = cur.fetchall()
+        cur.execute("SELECT product, forecast, alert, created_at FROM alerts ORDER BY created_at DESC LIMIT 10")
+        alerts = cur.fetchall()
+        conn.close()
+    except Exception:
+        forecasts, alerts = [], []
+
+    report_text = "===  Niyojan Forecast & Alerts Report ===\n\nRecent Forecasts:\n"
+    for r in forecasts:
+        try:
+            report_text += f"- {r['product']}: {float(r['forecast']):.2f} (at {r['created_at']})\n"
+        except Exception:
+            report_text += f"- {r['product']}: {r['forecast']} (at {r['created_at']})\n"
+    report_text += "\nRecent Alerts:\n"
+    for r in alerts:
+        try:
+            fval = float(r['forecast']) if r['forecast'] is not None else None
+            fstr = f"{fval:.2f}" if fval is not None else "n/a"
+        except Exception:
+            fstr = str(r['forecast'])
+        report_text += f"- {r['product']}: {r['alert']} [Forecast: {fstr}] ({r['created_at']})\n"
+    report_text += "\n=== Summary ===\nPlain-text report generated. Install transformers for AI summary."
+    return {"report": report_text}
+
+def _generate_pdf_for_current_user(current_user):
+    overview, categories, top_products, alerts = build_report_payload_from_db()
+    # fallback sample categories/top_products if empty
+    if not categories:
+        categories = [
+            {"category": "Staples", "products": 3, "total": 1317, "avgPerProduct": 439},
+            {"category": "Dairy", "products": 1, "total": 350, "avgPerProduct": 350},
+        ]
+    if not top_products:
+        top_products = [
+            {"name": "Rice", "id": "P001", "trend": "Strong upward trend "},
+            {"name": "Atta", "id": "P002", "trend": "Stable demand "},
+            {"name": "Sugar", "id": "P003", "trend": "Slight dip "},
+        ]
+    filename = f"niyojan_report_{current_user['email'].replace('@','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    output_path = os.path.join(REPORTS_DIR, filename)
+
+    if not PDF_GEN_AVAILABLE:
+        raise HTTPException(status_code=500, detail="PDF generator not available on server (missing utils.pdf_report_generator)")
+
+    try:
+        generate_pdf_report(output_path, overview, categories, top_products, alerts) # type: ignore
+        return output_path
+    except Exception as e:
+        logger.exception("PDF generation failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+
+@app.get("/report/view", response_class=FileResponse)
+def view_report(current_user = Depends(get_current_user)):
+    """
+    Generate PDF and return inline (browser preview).
+    """
+    output_path = _generate_pdf_for_current_user(current_user)
+    return FileResponse(output_path, media_type="application/pdf", filename=os.path.basename(output_path),
+                        headers={"Content-Disposition": f"inline; filename={os.path.basename(output_path)}"})
+
+@app.get("/report/download", response_class=FileResponse)
+def download_report(current_user = Depends(get_current_user)):
+    """
+    Generate PDF and return as attachment for download.
+    """
+    output_path = _generate_pdf_for_current_user(current_user)
+    return FileResponse(output_path, media_type="application/pdf", filename=os.path.basename(output_path),
+                        headers={"Content-Disposition": f"attachment; filename={os.path.basename(output_path)}"})
+
+# -------------------------
+# Send report via email (admin only)
+# -------------------------
+from fastapi import HTTPException, Depends
+from pydantic import BaseModel
+from utils.email_handler import send_email_report
+
+class SendReportBody(BaseModel):
+    recipients: list[str]
+
+@app.post("/send-report")
+def send_report_endpoint(body: SendReportBody, current_user=Depends(require_role("admin"))):
+    """
+    Sends the generated PDF report via email to one or more recipients.
+    """
+    try:
+        pdf_path = _generate_pdf_for_current_user(current_user)
+        subject = f"Niyojan Forecast Report - {datetime.now().strftime('%Y-%m-%d')}"
+        body_text = "Please find attached the latest Niyojan Forecast Report."
+        
+        ok = send_email_report(body.recipients, subject, body_text, attachments=[pdf_path])
+        if not ok:
+            raise HTTPException(status_code=500, detail="Email sending failed (check credentials / network)")
+        return {"sent_to": body.recipients, "ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send report: {e}")
+
+
+# -------------------------
+# Run locally (optional)
+# -------------------------
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("backend.app:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=True)
