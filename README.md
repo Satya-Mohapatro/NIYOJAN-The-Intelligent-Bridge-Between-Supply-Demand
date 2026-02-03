@@ -87,8 +87,8 @@ niyojan-new/
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/r0hi7/Niyojan.git
-cd Niyojan
+git clone https://github.com/Satya-Mohapatro/NIYOJAN-The-Intelligent-Bridge-Between-Supply-Demand.git
+cd NIYOJAN-The-Intelligent-Bridge-Between-Supply-Demand
 ```
 
 ### 2. Backend Setup
