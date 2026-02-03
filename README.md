@@ -1,104 +1,119 @@
-# 🌾 Niyojan — Intelligent Demand Forecasting System
+# 🌾 Niyojan — Assitive AI for Demand Forecasting & Inventory Optimization
 
-Niyojan is an AI-driven demand forecasting platform that uses machine learning to predict product demand, generate visual insights, and automatically email PDF reports.  
-It integrates a **FastAPI backend**, **React + Vite frontend**, and **TensorFlow-based forecasting engine**.
+Niyojan is an **AI-driven demand forecasting platform** that combines **LSTM Time-Series Forecasting** with **GenAI (Google Gemini)** to predict demand, generate actionable inventory insights, and automate reporting.
 
+It empowers businesses to optimize stock levels, avoid stockouts/overstocking, and make data-driven decisions through a modern, interactive dashboard.
 
 ---
 
-## 🧩 Repository Structure 
+## 🚀 Key Features
+
+### 🧠 **Intelligent Forecasting**
+*   **Time-Series Analysis**: Uses **LSTM (Long Short-Term Memory)** networks to predict sales demand for up to 12 weeks.
+*   **Trend Detection**: Automatically identifies upward (↗), downward (↘), or stable (→) demand trends.
+
+### 🤖 **GenAI Insight Engine**
+*   **Powered by Google Gemini**: Analyzes forecast data to provide qualitative insights.
+*   **Actionable Advice**: Suggests **Restock**, **Hold**, or **Reduce** decisions based on predicted demand vs. current inventory.
+*   **Risk Assessment**: Flags inventory decisions as Low, Medium, or High risk.
+
+### 📊 **Operational Dashboard**
+*   **Interactive Visualization**: Visual charts for category-wise demand and product trends using Recharts.
+*   **Real-time Alerts**: Automatic flagging of critical stock levels.
+*   **PDF Reporting**: One-click generation of professional forecast reports with visualizations.
+*   **Email Automation**: Send reports directly to managers via SMTP (Gmail).
+
+---
+
+## 🧩 Repository Structure
+
 ```
 niyojan-new/
 │
 ├── backend/
-│ ├── app.py # FastAPI app entrypoint
-│ └── reports/ # Generated PDF reports
+│   ├── app/
+│   │   ├── main.py          # FastAPI app entrypoint
+│   │   ├── core/            # Core configurations
+│   │   └── services/        # Business logic services
+│   ├── reports/             # Generated PDF reports storage
+│   └── tests/               # Backend tests
+│
+├── frontend/                # React + Vite Application
+│   ├── src/
+│   │   ├── components/      # Reusable UI components
+│   │   ├── pages/           # Application pages
+│   │   └── assets/          # Static assets
+│   └── package.json
 │
 ├── database/
-│ ├── niyojan.db # SQLite database
-│ └── schema.sql # Database schema
+│   ├── niyojan.db           # SQLite database
+│   ├── db_manager.py        # Database handling logic
+│   └── schema.sql           # Database schema definitions
 │
-├── frontend/
-│ ├── src/ # React + Vite source
-│ ├── package.json
-│ └── vite.config.ts
+├── genai/                   # GenAI & LLM Integration
+│   ├── insight_engine.py    # Logic for generating insights
+│   ├── llm_client.py        # Google Gemini Client wrapper
+│   └── prompt_templates.py  # System & User prompts for LLM
 │
-├── utils/   
-│ ├── email_handler.py # Handles the email sending
-│ ├── decision_engine.py # generate an inventory alert message.
-│ ├── forecast_engine.py # Not used in the current version
-│ ├── report_generator.py # Not used in the current version
-│ └── pdf_generator.py # Generate PDF reports
-│ 
-├── .env # Environment variables (ignored in git)
-├── poetry.lock / pyproject.toml # Python dependency management
-└── README.md
+├── lstm/                    # Forecasting Models
+│   ├── global_lstm_model/   # Trained LSTM model artifacts
+│   └── global_lstm_demand_forecasting.ipynb # Training notebook
+│
+├── utils/
+│   ├── email_handler.py     # SMTP Email utility
+│   ├── decision_engine.py   # Rule-based decision logic
+│   └── pdf_report_generator.py # PDF generation using ReportLab
+│
+├── .env                     # Environment variables (Sensitive)
+├── pyproject.toml           # Poetry dependency management
+└── README.md                # Project Documentation
 ```
----
-
-## 🚀 Key Features  
-✅ Upload CSV files and get real-time demand forecasts  
-✅ Visual charts for weekly and category-wise insights  
-✅ AI-generated alerts for stock management  
-✅ Automatically generate and download forecast PDF reports  
-✅ Send forecast reports via email with Gmail App Password authentication   
 
 ---
 
-## 🛠 Tech Stack  
-- **Backend**: FastAPI, TensorFlow, ReportLab
-- **Frontend**: React (Vite + TypeScript), Tailwind CSS, Recharts
-- **Machine Learning / Time Series**: Python, LSTM models (in `lstm/`)  
-- **Database**: SQLite    
-- **Project management**: Poetry (`pyproject.toml`), or pip + `requirements.txt`  
+## 🛠 Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| **Backend** | Python, FastAPI, Pydantic |
+| **Frontend** | React, Vite, TypeScript, Tailwind CSS, Recharts |
+| **AI / ML** | TensorFlow (LSTM), Google Gemini (GenAI) |
+| **Database** | SQLite |
+| **Reporting** | ReportLab (PDF), Python `email` lib |
 
 ---
 
 ## 📦 Installation & Local Setup
 
 ### 1. Clone the repository
-
 ```bash
 git clone https://github.com/r0hi7/Niyojan.git
 cd Niyojan
 ```
 
----
+### 2. Backend Setup
+You can use **Poetry** (recommended) or **pip**.
 
-### 2. Create a virtual environment
-
-```bash
-# Windows
-python -m venv venv
-venv\Scripts\activate
-
-# macOS / Linux
-python3 -m venv venv
-source venv/bin/activate
-```
-
----
-
-### 3. Install dependencies
-
-#### Backend (Python + FastAPI)
-
-If you are using **Poetry**:
-
+#### Option A: Using Poetry
 ```bash
 poetry install
-poetry env activate
+poetry shell
 ```
 
-Or using plain **pip**:
-
+#### Option B: Using Pip
 ```bash
-cd backend
-pip install -r requirements.txt
+# Create virtual environment
+python -m venv venv
+# Activate it (Windows)
+venv\Scripts\activate
+# Activate it (Mac/Linux)
+source venv/bin/activate
+
+# Install dependencies
+pip install -r backend/requirements.txt
 ```
 
-#### Frontend (React + Vite)
-
+### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
@@ -106,152 +121,69 @@ npm install
 
 ---
 
-### 4. Configure environment variables
+## ⚙️ Configuration
 
-Create a `.env` file in the **project root** (same level as `backend/` and `frontend/`) and add the following:
+Create a `.env` file in the **project root** and add the following keys:
 
-```bash
-# JWT Secret
-JWT_SECRET=super_secret_key_change_this
+```ini
+# --- Security ---
+JWT_SECRET=your_super_secret_jwt_key
+JWT_EXPIRE_MINUTES=720
 
-# Gmail SMTP setup
+# --- GenAI (Google Gemini) ---
+GEMINI_API_KEY=your_google_gemini_api_key
+
+# --- Email (Gmail App Password) ---
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_EMAIL=your_email@gmail.com
-SMTP_PASSWORD=your_app_password
-
-# Optional - runtime settings
-JWT_EXPIRE_MINUTES=720
+SMTP_PASSWORD=your_gmail_app_password
 ```
 
-> ⚠️ **Important:**
-> The `SMTP_PASSWORD` must be a **Gmail App Password**, not your regular Gmail password.
-> To generate it:
->
-> 1. Visit [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
-> 2. Select **Mail** and **Windows Computer**
-> 3. Copy the 16-character password and paste it here.
+> **Note**: For `SMTP_PASSWORD`, generate an **App Password** from your Google Account settings if 2FA is enabled.
 
 ---
 
-### 5. Initialize the database
+## ▶️ Running the Application
 
-Run this inside the `database` directory:
-
+### 1. Initialize Database
+Ensure the database is set up before running the app.
 ```bash
 cd database
 python create_db.py
+cd ..
 ```
+*This creates a default admin user:* `admin@niyojan.ai` / `admin123`
 
-This will automatically create:
-
-* `niyojan.db` — the main SQLite database
-* a default admin user:
-
-  ```
-  Email: admin@niyojan.ai
-  Password: admin123
-  ```
-
----
-
-### 6. Run the Backend
-
-From the project root or backend directory:
-
+### 2. Start Backend
+From the project root:
 ```bash
 uvicorn backend.app:app --reload
 ```
+*API Docs available at:* [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
-Then open your browser and visit:
-👉 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-
----
-
-### 7. Run the Frontend
-
-In a new terminal:
-
+### 3. Start Frontend
+Open a new terminal:
 ```bash
 cd frontend
 npm run dev
 ```
-
-Now visit:
-👉 [http://localhost:5173](http://localhost:5173)
-
-Login with:
-
-```
-Email: admin@niyojan.ai
-Password: admin123
-```
+*App available at:* [http://localhost:5173](http://localhost:5173)
 
 ---
 
-## 🧮 Model Workflow
+## 💡 User Guide
 
-1. **Upload Data** → User uploads a CSV (columns: `Product_ID`, `Product_Name`, `Category`, `Week`, `Sales_Quantity`).
-2. **Forecasting Engine** → LSTM / ML-based model predicts multi-week sales horizon.
-3. **Alert Generation** → System flags products showing high or low demand using decision rules (`utils/decision_engine.py`).
-4. **Database Storage** → Forecasts and alerts are saved in `niyojan.db`.
-5. **PDF Report Generation** → A styled report (with emojis/icons) is created via `utils/pdf_report_generator.py`.
-6. **Email Dispatch (Admin Only)** → Admin can send the report via email to one or more recipients.
-
----
-
-## 📄 Reports & Alerts
-
-### 📊 Reports
-
-* Generated automatically when a forecast is made.
-* Stored in `/backend/reports/`.
-* Accessible through:
-
-  * `/report/view` → View inline in browser
-  * `/report/download` → Download the PDF
-  * `/send-report` → Email the report (admin only)
-
-### ⚠️ Alerts
-
-* Alerts summarize forecast conditions:
-
-  * ⚠️ High demand → "Consider restocking"
-  * ✅ Balanced → "Stock levels are stable"
-* Displayed in the **Alerts tab** of the UI and saved to the database.
-
----
-
-## 💡 Example Workflow
-
-| Step | Action                 | Output                              |
-| ---- | ---------------------- | ----------------------------------- |
-| 1    | Upload a CSV file      | Data parsed and validated           |
-| 2    | Click “Run Forecast”   | Predictions generated               |
-| 3    | View “Results” Tab     | Charts and tables                   |
-| 4    | Switch to “Alerts” Tab | Forecast-based alerts               |
-| 5    | Go to “Report” Tab     | View, download, or email PDF report |
+1.  **Login**: Use the admin credentials (`admin@niyojan.ai` / `admin123`).
+2.  **Upload Data**: Go to the **Dashboard** and upload a CSV file with columns: `Product_ID`, `Product_Name`, `Category`, `Week`, `Sales_Quantity`.
+3.  **Run Forecast**: The system handles the rest—predicting sales and generating alerts.
+4.  **View Insights**: Click on individual products to see **GenAI-powered insights** (Restock/Hold recommendations).
+5.  **Reports**: Navigate to the **Reports** tab to view or email the PDF summary.
 
 ---
 
 ## 🤝 Contributing
+Contributions are welcome! Please fork the repo and submit a Pull Request.
 
-Contributions, bug reports, and feature requests are always welcome!
-To contribute:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature-name`)
-3. Commit changes (`git commit -m "Add feature"`)
-4. Push to your fork and submit a Pull Request
-
----
-
-## ⭐ Support the Project
-
-If you found **Niyojan** helpful:
-
-* 🌟 Star the repository on GitHub
-* 🐛 Report bugs or suggest features via Issues tab
-* 📣 Share your feedback!
-
----
+## ⭐ Support
+If you like Niyojan, please start the repository!
