@@ -6,18 +6,18 @@ It empowers businesses to optimize stock levels, avoid stockouts/overstocking, a
 
 ---
 
-## 🚀 Key Features
+##  Key Features
 
-### 🧠 **Intelligent Forecasting**
+###  **Intelligent Forecasting**
 *   **Time-Series Analysis**: Uses **LSTM (Long Short-Term Memory)** networks to predict sales demand for up to 12 weeks.
 *   **Trend Detection**: Automatically identifies upward (↗), downward (↘), or stable (→) demand trends.
 
-### 🤖 **GenAI Insight Engine**
+###  **GenAI Insight Engine**
 *   **Powered by Google Gemini**: Analyzes forecast data to provide qualitative insights.
 *   **Actionable Advice**: Suggests **Restock**, **Hold**, or **Reduce** decisions based on predicted demand vs. current inventory.
 *   **Risk Assessment**: Flags inventory decisions as Low, Medium, or High risk.
 
-### 📊 **Operational Dashboard**
+###  **Operational Dashboard**
 *   **Interactive Visualization**: Visual charts for category-wise demand and product trends using Recharts.
 *   **Real-time Alerts**: Automatic flagging of critical stock levels.
 *   **PDF Reporting**: One-click generation of professional forecast reports with visualizations.
@@ -25,7 +25,7 @@ It empowers businesses to optimize stock levels, avoid stockouts/overstocking, a
 
 ---
 
-## 🧩 Repository Structure
+##  Repository Structure
 
 ```
 niyojan-new/
@@ -71,7 +71,7 @@ niyojan-new/
 
 ---
 
-## 🛠 Tech Stack
+##  Tech Stack
 
 | Component | Technology |
 |-----------|------------|
@@ -83,7 +83,7 @@ niyojan-new/
 
 ---
 
-## 📦 Installation & Local Setup
+##  Installation & Local Setup
 
 ### 1. Clone the repository
 ```bash
@@ -144,7 +144,7 @@ SMTP_PASSWORD=your_gmail_app_password
 
 ---
 
-## ▶️ Running the Application
+##  Running the Application
 
 ### 1. Initialize Database
 Ensure the database is set up before running the app.
@@ -172,7 +172,7 @@ npm run dev
 
 ---
 
-## 💡 User Guide
+##  User Guide
 
 1.  **Login**: Use the admin credentials (`admin@niyojan.ai` / `admin123`).
 2.  **Upload Data**: Go to the **Dashboard** and upload a CSV file with columns: `Product_ID`, `Product_Name`, `Category`, `Week`, `Sales_Quantity`.
@@ -182,8 +182,8 @@ npm run dev
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 Contributions are welcome! Please fork the repo and submit a Pull Request.
 
-## ⭐ Support
+##  Support
 If you like Niyojan, please start the repository!
