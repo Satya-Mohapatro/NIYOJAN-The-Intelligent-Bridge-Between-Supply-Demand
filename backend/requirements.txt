@@ -14,3 +14,7 @@ reportlab
 python-dotenv
 matplotlib
 seaborn
+google-generativeai
+
+pydantic>=2.5
+typing-extensions

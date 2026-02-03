@@ -23,6 +23,8 @@ import logging
 import database.db_manager as db_manager
 from utils.decision_engine import analyze_forecast
 from utils.forecast_engine import predict_demand
+from genai.insight_engine import generate_insights, generate_insights_async
+from genai.schemas import InsightInput, ForecastSummary, InventoryStatus
 
 # Optional utilities
 try:
@@ -135,6 +137,12 @@ class ForecastResponseModel(BaseModel):
 
 class SendReportBody(BaseModel):
     recipients: List[str]
+
+class InsightRequest(BaseModel):
+    product_name: str
+    current_stock: int
+    forecast_next_week: float
+    trend: str  # increasing, decreasing, stable
 
 # -------------------------
 # Small helpers
@@ -412,7 +420,9 @@ async def forecast_endpoint(
             # Alerts still generally focus on the immediate next week for urgency
             next_week_val = float(final_preds[0]) if final_preds else 0.0
             
-            alert_msg = analyze_forecast(str(pid), next_week_val, last_stock_proxy)
+            analysis_result = analyze_forecast(str(pid), next_week_val, last_stock_proxy)
+            # Refactored: analyze_forecast returns a dict, we need 'message' for the alert table
+            alert_msg = analysis_result["message"]
             alerts_to_insert.append((str(pid), next_week_val, alert_msg, category_val))
         except Exception:
             pass
@@ -608,6 +618,52 @@ def send_report_endpoint(body: SendReportBody, current_user=Depends(get_current_
         return {"sent_to": body.recipients, "ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send report: {e}")
+
+
+# -------------------------
+# Insight Engine Endpoint
+# -------------------------
+@app.post("/insight")
+async def insight_endpoint(req: InsightRequest, current_user = Depends(get_current_user)):
+    try:
+        # Re-run decision logic to get structured decision tags
+        analysis = analyze_forecast(req.product_name, req.forecast_next_week, req.current_stock)
+        
+        # safely map custom trend string to schema literal
+        trend_map = {
+            "Increasing": "increasing", "Decreasing": "decreasing", "Stable": "stable",
+            "Upward ↗": "increasing", "Downward ↘": "decreasing" 
+        }
+        safe_trend = trend_map.get(req.trend, "stable")
+        # Ensure it matches Literal in schemas.py exactly: "increasing", "decreasing", "stable"
+        if safe_trend not in ["increasing", "decreasing", "stable"]:
+             safe_trend = "stable"
+
+        # Construct GenAI Input
+        inp = InsightInput(
+            product_name=req.product_name,
+            forecast_summary=ForecastSummary(
+                avg_daily_demand=req.forecast_next_week / 7.0,
+                peak_demand=req.forecast_next_week, # approx
+                trend=safe_trend
+            ),
+            inventory_status=InventoryStatus(
+                current_stock=req.current_stock,
+                days_of_cover=(req.current_stock / (req.forecast_next_week/7.0)) if req.forecast_next_week > 0 else 999.0,
+                reorder_threshold=10  # This could be dynamic in future
+            ),
+            decision=analysis["decision"], # RESTOCK, HOLD, REDUCE
+            risk_level=analysis["risk_level"], # LOW, MEDIUM, HIGH
+            context={"system_msg": analysis["message"], "user_role": current_user["role"]}
+        )
+
+        from genai.insight_engine import generate_insights_async
+        output = await generate_insights_async(inp)
+        return output
+    except Exception as e:
+        logger.exception("Insight generation failed")
+        raise HTTPException(status_code=500, detail=f"Insight generation failed: {str(e)}")
+
 
 
 # -------------------------

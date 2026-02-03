@@ -6,6 +6,7 @@ import {
   downloadCsv,
   getAlerts,
   getReport,
+  getInsight,
 } from "../api";
 import ForecastChart from "../components/ForecastChart";
 
@@ -25,6 +26,10 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"results" | "alerts" | "report">(
     "results"
   );
+  const [insight, setInsight] = useState<any | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightProduct, setInsightProduct] = useState<string | null>(null);
+  const [lang, setLang] = useState<"english" | "hindi">("english");
 
   // Derived overview stats and category summary based on forecast results
   const overview = React.useMemo(() => {
@@ -121,6 +126,37 @@ export default function Dashboard() {
       setError(err.message || "Report generation failed");
     } finally {
       setReportLoading(false);
+    }
+  };
+
+  const handleInsight = async (r: any) => {
+    if (!token) return;
+    setInsightLoading(true);
+    setInsightProduct(r.Product_Name);
+    setInsight(null);
+    setError(null);
+    try {
+      let trend = "Stable";
+      const vals = r.Final_Forecasted_Sales;
+      if (vals.length > 1) {
+        if (vals[vals.length - 1] > vals[0]) trend = "Increasing";
+        else if (vals[vals.length - 1] < vals[0]) trend = "Decreasing";
+      }
+
+      const data = await getInsight(token, {
+        product_name: r.Product_Name,
+        current_stock: Number(r.Last_Week_Sales || 0),
+        forecast_next_week: Number(vals[0] || 0),
+        trend: trend
+      });
+      setInsight(data);
+      setTimeout(() => {
+        document.getElementById("insight-section")?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (err: any) {
+      setError(err.message || "Insight generation failed");
+    } finally {
+      setInsightLoading(false);
     }
   };
 
@@ -361,6 +397,7 @@ export default function Dashboard() {
                         <th className="p-4 font-semibold text-right">Price</th>
                         <th className="p-4 font-semibold text-right">Last Wk</th>
                         <th className="p-4 font-semibold text-right text-emerald-400">Est. Revenue</th>
+                        <th className="p-4 font-semibold text-center">Action</th>
                         {Array.from({ length: result.horizon }).map((_, i) => (
                           <th key={i} className="p-4 font-semibold text-center bg-[rgba(255,255,255,0.01)] text-blue-300">W{i + 1}</th>
                         ))}
@@ -384,6 +421,15 @@ export default function Dashboard() {
                             <td className="p-4 text-right font-mono text-gray-400">₹{r.Price || 0}</td>
                             <td className="p-4 text-right font-mono font-medium">{r.Last_Week_Sales}</td>
                             <td className="p-4 text-right font-mono text-emerald-400 font-bold">₹{totalRev.toLocaleString()}</td>
+                            <td className="p-4 text-center">
+                              <button
+                                onClick={() => handleInsight(r)}
+                                className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 transition-colors"
+                                title="Generate AI Insight"
+                              >
+                                🤖
+                              </button>
+                            </td>
                             {r.Final_Forecasted_Sales.map(
                               (v: number, idx: number) => (
                                 <td key={idx} className="p-4 text-center font-mono text-blue-200 bg-[rgba(59,130,246,0.02)]">{v}</td>
@@ -395,6 +441,95 @@ export default function Dashboard() {
                     </tbody>
                   </table>
                 </div>
+                {/* 🤖 Insight Engine Section (Step 3) */}
+                <div id="insight-section" className="mt-12 mb-8 transition-all scroll-mt-24">
+                  {(insightLoading || insight) && (
+                    <div className="card border border-emerald-500/30 bg-[#0F1014] relative overflow-hidden ring-1 ring-white/10 shadow-2xl">
+                      {/* Background Glow */}
+                      <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+
+                      <div className="relative z-10">
+                        {/* Header */}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 border-b border-white/5 pb-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl shadow-lg shadow-purple-900/20">
+                              🤖
+                            </div>
+                            <div>
+                              <h2 className="text-xl font-bold text-white m-0 tracking-tight">AI-Generated Human Insights</h2>
+                              <p className="text-gray-400 text-sm mt-1">Insights derived from forecast trends and demand heatmap analysis for <span className="text-emerald-400 font-semibold">{insightProduct}</span></p>
+                            </div>
+                          </div>
+
+                          {/* Language Toggle */}
+                          {!insightLoading && insight && (
+                            <div className="flex bg-black/40 p-1 rounded-lg border border-white/10">
+                              <button
+                                onClick={() => setLang("english")}
+                                className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${lang === "english" ? "bg-emerald-600 text-white shadow-lg" : "text-gray-400 hover:text-gray-200"}`}
+                              >
+                                English
+                              </button>
+                              <button
+                                onClick={() => setLang("hindi")}
+                                className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${lang === "hindi" ? "bg-emerald-600 text-white shadow-lg" : "text-gray-400 hover:text-gray-200"}`}
+                              >
+                                हिंदी
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {insightLoading ? (
+                          <div className="py-16 text-center">
+                            <div className="animate-spin text-5xl mb-6 inline-block opacity-80">✨</div>
+                            <div className="text-xl font-medium text-white mb-2">Analyzing supply chain patterns...</div>
+                            <div className="text-sm text-gray-500">Connecting to Gemini Engine</div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in-up">
+                            {/* Block 1: Summary */}
+                            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors">
+                              <div className="flex items-center gap-3 mb-3">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]"></span>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Insight Summary</span>
+                              </div>
+                              <p className="text-gray-200 text-lg leading-relaxed font-light">
+                                {insight[lang].summary}
+                              </p>
+                            </div>
+
+                            {/* Block 2: Risk */}
+                            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-colors">
+                              <div className="flex items-center gap-3 mb-3">
+                                <span className={`w-2 h-2 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.3)] ${insight.english.risk === "HIGH" ? "bg-red-500 shadow-red-500/50" :
+                                  insight.english.risk === "MEDIUM" ? "bg-amber-500 shadow-amber-500/50" :
+                                    "bg-emerald-500 shadow-emerald-500/50"
+                                  }`}></span>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Risk Analysis</span>
+                              </div>
+                              <p className="text-gray-200 text-lg leading-relaxed font-light">
+                                {insight[lang].risk}
+                              </p>
+                            </div>
+
+                            {/* Block 3: Action */}
+                            <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-900/10 to-transparent border border-emerald-500/10 hover:border-emerald-500/20 transition-colors">
+                              <div className="flex items-center gap-3 mb-3">
+                                <span className="text-emerald-400">✅</span>
+                                <span className="text-xs font-bold text-emerald-400/80 uppercase tracking-widest">Recommended Action</span>
+                              </div>
+                              <p className="text-white text-lg font-medium leading-relaxed">
+                                {insight[lang].action}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Heatmap Section */}
                 <div style={{ marginTop: 32 }}>
                   <h2>🔥 Demand Heatmap</h2>
@@ -435,10 +570,14 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* 📊 Add Chart Here */}
+                {/* 📊 Forecast Chart (Step 2) */}
                 {result.data && result.data.length > 0 && (
-                  <ForecastChart data={result.data} />
+                  <div className="mt-8">
+                    <ForecastChart data={result.data} />
+                  </div>
                 )}
+
+
 
 
               </>

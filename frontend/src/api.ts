@@ -94,3 +94,20 @@ export async function createUser(
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+// 🟢 GET INSIGHTS (GenAI)
+export async function getInsight(
+  token: string,
+  payload: { product_name: string; current_stock: number; forecast_next_week: number; trend: string }
+) {
+  const res = await fetch(`${API_BASE}/insight`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
