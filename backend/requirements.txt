@@ -1,20 +1,40 @@
+# FastAPI
 fastapi
 uvicorn
+python-dotenv
+
+# Data
 pandas
 numpy
 scikit-learn
+
+# Deep Learning
 tensorflow==2.15.0
+
+# Auth & API
 python-multipart
 jinja2
 email-validator
 passlib
 bcrypt
 PyJWT
-reportlab
-python-dotenv
+
+# Visualization
 matplotlib
 seaborn
+reportlab
+
+# LLM + Agents
+langchain
+langgraph
+langchain-google-genai
 google-generativeai
 
+# RAG stack
+faiss-cpu
+sentence-transformers
+PyPDF2
+
+# Core dependencies
 pydantic>=2.5
 typing-extensions
