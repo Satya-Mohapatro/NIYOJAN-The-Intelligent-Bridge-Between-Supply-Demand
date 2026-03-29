@@ -1,154 +1,100 @@
 # Niyojan - Comprehensive Project Analysis & Code Deep Dive
 
-This document serves as an exhaustive technical reference for the **Niyojan Demand Forecasting System**. It analyzes every directory, file, and significant function within the codebase.
+This document serves as an exhaustive technical reference for the **Niyojan Demand Forecasting System**. It analyzes every directory, file, and significant function within the codebase, incorporating the recently added **Agentic AI Intelligence Hub**.
 
 ---
 
 ## 1. 🏗 System Architecture Overview
 
-Niyojan is a **Demand Forecasting & Inventory Optimization Platform** that uses a three-tier architecture:
+Niyojan is a **Demand Forecasting & Inventory Optimization Platform** that uses a robust multi-layer architecture:
 
 1.  **Frontend (Presentation Layer)**:
     *   **Tech**: React (Vite), TypeScript, Tailwind CSS, Recharts.
-    *   **Role**: Handles user interaction, file uploads, data visualization, and requesting AI insights.
-    *   **Key File**: `frontend/src/pages/Dashboard.tsx` is the central hub.
+    *   **Role**: Handles user interaction, file uploads, data visualization, robust reporting, and a conversational agentic hub for natural strategic queries.
+    *   **Key Files**: `Dashboard.tsx` (Core operations hub), `AgenticHub.tsx` (AI conversational interface).
 
 2.  **Backend (Logic Layer)**:
     *   **Tech**: Python, FastAPI.
-    *   **Role**: Exposes REST endpoints, manages authentication, runs forecast models (`lstm`), and orchestrates Generative AI (`genai`).
-    *   **Key File**: `backend/app/main.py`.
+    *   **Role**: Exposes REST endpoints, runs predictive machine learning models (`lstm`), and orchestrates sophisticated generative AI agents via `LangGraph`.
+    *   **Key Files**: `backend/app/main.py`, `backend/app/routes/intelligence.py`.
 
-3.  **Data & AI Layer**:
+3.  **Data & Intelligence Layer**:
     *   **Storage**: SQLite (`database/niyojan.db`).
-    *   **Forecasting**: TensorFlow/Keras LSTM model (`lstm/global_lstm_model`).
-    *   **GenAI**: Google Gemini Pro/Flash (`genai/llm_client.py`).
+    *   **Forecasting**: TensorFlow/Keras LSTM globally-trained model (`lstm/global_lstm_model`).
+    *   **GenAI Multi-Agent System**: `LangGraph` and Google Gemini APIs powering intent classification, RAG-based document retrieval, strategic planning, and numerical simulations.
 
 ---
 
 ## 2. 📂 Backend Code Deep Dive
 
 ### `backend/app/main.py`
-The entry point for the FastAPI server. It stitches together all utilities.
+The overarching entry point for the FastAPI server, bridging multiple sub-modules.
 
-*   **Authentication**:
-    *   `create_access_token()`: Generates JWTs using `HS256`.
-    *   `get_current_user()`: Dependency that decodes the JWT and validates the user against the DB.
-    *   `login()`: Endpoint `/auth/login`. Validates email/password hash using `db_manager.verify_user_credentials`.
-
+*   **Authentication Flow**:
+    *   Implements secure JWT standard (`create_access_token()`).
+    *   Endpoints like `/auth/login` validate hash schemas securely through `db_manager.verify_user_credentials`.
 *   **Forecasting Logic (`/forecast`)**:
-    1.  **Input Parsing**: Reads CSV using `pandas`. Validates columns (`Product_ID`, `Week`, `Sales_Quantity`).
-    2.  **Prediction Loop**: Iterates through each unique product:
-        *   Calls `predict_demand(product_id, history)` from `utils.forecast_engine`.
-        *   Appends prediction to history to forecast the *next* week (Rolling Forecast).
-    3.  **Trend Calculation**: Compares last two history points. If change > 5%, marks as `↑` or `↓`.
-    4.  **Persistence**: Calls `db_manager.bulk_insert_forecasts` to save results.
-    5.  **Alert Generation**: Calls `analyze_forecast()` to determine risk (Restock/Hold) and saves via `bulk_insert_alerts`.
+    *   **Input Parsing**: Takes CSV arrays and cleans dates and missing columns via `pandas`.
+    *   **Prediction Map**: Iterates unique products and runs `utils.forecast_engine.predict_demand` in rolling loops to project `N` weeks out.
+    *   **Alert Pipeline**: Chains to `utils.decision_engine.analyze_forecast` to label conditions (High Risk, Medium, Low/Safe).
+*   **Reporting Stack (`/report/view`, `/report/download`, `/send-report`)**:
+    *   Combines local stats into a formal PDF layout utilizing `ReportLab` and sends via SMTP inside `utils.email_handler.py`.
 
-*   **Reporting (`/report/view`, `/report/download`)**:
-    *   Fetches latest forecast data.
-    *   Calls `generate_pdf_report()` from `utils.pdf_report_generator`.
-    *   Returns the PDF file inline or as an attachment.
+### `backend/app/agents/` (The LangGraph Intelligence Hub)
+This forms the core of the **Agentic Hub**, implementing a conversational chain designed around `gemini-flash-latest`.
 
-*   **GenAI Insights (`/insight`)**:
-    *   Receives structured data (Product Name, Current Stock, Forecast).
-    *   Constructs a prompt using `ForecastSummary` and `InventoryStatus` schemas.
-    *   Calls `generate_insights_async` to query Google Gemini.
+*   **`graph.py` & `state.py`**:
+    *   `AgentState` manages the conversational payload passing context back and forth.
+    *   `build_agent()` formulates a robust `StateGraph` adding nodes for intent detection, retrieval, analysis, simulation, and strategic output formatting.
+*   **`nodes.py`**:
+    *   **`intent_node` & `route_intent`**: LLM zero-shot capability maps raw user queries into exact intents: `retrieval`, `analysis`, `simulation`, or `strategy` handling fallback regex checks if necessary.
+    *   **`retrieval_node`**: Leverages FAISS and Gemini Embeddings (`models/text-embedding-004`) to inject explicit semantic rules from uploaded PDFs.
+    *   **`analysis_node`**: Sorts products by stock volatility and inventory gaps calculating the math deterministically before surfacing answers.
+    *   **`simulation_node`**: Re-calculates Reorder Points (ROP) applying a dynamic Demand scenario (like +20% demand spike) with Z-Scores using `np.sqrt(lead_time)`.
+    *   **`strategy_node` & `reasoning_node`**: Collects the preceding mathematical facts to invoke the central `STRATEGIC_SYSTEM_PROMPT`. Limits hallucination by forcing structured JSON extraction into a 4-week executive plan.
+*   **`rag.py`**: Reads binary bytes from memory, runs `PyPDFLoader`, splits documents via `RecursiveCharacterTextSplitter`, and embeds them to vectorize standard operational procedures dynamically.
 
 ### `database/`
 *   **`schema.sql`**:
     *   `users`: Stores `email`, `password_hash`, `salt`, `role`.
-    *   `forecasts`: Stores `product`, `forecast`, `category`, `last_week_sales`.
-    *   `alerts`: Stores `product`, `alert`, `forecast`.
-*   **`db_manager.py`**:
-    *   `init_db()`: Executes `schema.sql`.
-    *   `create_user()`, `verify_user_credentials()`: Handles secure password hashing (PBKDF2-HMAC-SHA256) with unique salts.
-    *   `bulk_insert_forecasts/alerts()`: Optimized `executemany` calls for high performance.
-    *   `get_latest_batch_timestamp()`: Finds the timestamp of the most recent forecast run to filter reports.
+    *   `forecasts`: Logs the `product`, `forecast`, `category`, and scalar sales.
+    *   `alerts`: Records trigger messages based on forecast/stock imbalance.
+*   **`db_manager.py`**: Fast insertion queries logic handling bulk operations (`executemany`) tracking timestamps (`created_at`) allowing the app to filter the latest runs seamlessly.
 
-### `genai/` (Google Gemini Integration)
-*   **`llm_client.py`**:
-    *   `call_llm()`: Wrapper for `google.generativeai`. Uses model `gemini-flash-latest` (optimized for speed/cost).
-    *   `temperature=0.2`: Sets a low temperature for consistent, factual outputs.
-*   **`insight_engine.py`**:
-    *   `generate_insights()`:
-        *   Takes `InsightInput` Pydantic model.
-        *   Serializes it to JSON.
-        *   Fills `USER_PROMPT_TEMPLATE`.
-        *   Calls LLM.
-        *   `extract_json()`: Robustly parses the response, handling potential Markdown code blocks (````json ... ````) returned by the LLM.
-*   **`prompt_templates.py`**:
-    *   Contains the "System Prompt" that defines the AI persona ("Supply Chain Intelligence Assistant").
-    *   Requests output in **bilingual JSON** (English + Hindi).
-
-### `lstm/` (Machine Learning)
-*   **`global_lstm_model`**: A pre-trained TensorFlow/Keras SavedModel.
-*   **`scaler.pkl`**: A pickled Scikit-Learn `MinMaxScaler` or `StandardScaler`.
-*   **NOTE**: The training notebook `global_lstm_demand_forecasting.ipynb` shows how the model was created (likely using a sliding window approach on time-series data).
+### `lstm/` (Machine Learning Module)
+*   Provides `global_lstm_model` implemented dynamically.
+*   The system scales normalized sequences and runs backward lookbacks (history) to infer trend continuation. The resulting prediction handles realistic padding on edge cases where product histories are too short.
 
 ### `utils/`
-*   **`forecast_engine.py`**:
-    *   `predict_demand()`:
-        *   Loads model & scaler on import (singleton pattern).
-        *   **Preprocessing**: Reshapes input to `(1, timesteps, features)`. Handles padding if history < required timesteps.
-        *   **Postprocessing**: Inverse transforms the model output to get the real unit sales.
-*   **`decision_engine.py`**:
-    *   `analyze_forecast()`:
-        *   **Logic**: `Ratio = Forecast / Current_Stock`.
-        *   **Rules**:
-            *   Ratio > 1.2 ⇒ **High Risk** (Restock).
-            *   Ratio < 0.5 ⇒ **Medium Risk** (Reduce/Overstock).
-            *   Else ⇒ **Low Risk** (Stable).
-*   **`pdf_report_generator.py`**:
-    *   Uses `ReportLab` to programmatically draw PDFs.
-    *   `replace_emojis_with_icons()`: ReportLab doesn't support color emojis well, so this utility replaces specific characters (⚠️, 📈) with small PNG images from `icons/`.
-*   **`email_handler.py`**:
-    *   `send_email_report()`: Connects to Gmail SMTP (`smtp.gmail.com:587`). Uses `MIMEMultipart` to attach the generated PDF.
+*   **`decision_engine.py`**: Calculates Ratios (`Forecast / Current_Stock`) generating dynamic alert string warnings.
+*   **`pdf_report_generator.py`**: High-end PDF drawer dealing with custom logic to inject UI emojis directly by rendering local fallback png images preventing breaking PDF encoding errors.
+*   **`forecast_engine.py`**: The singleton-loaded model runner linking inference to raw FastAPI inputs.
 
 ---
 
 ## 3. 🖥 Frontend Code Deep Dive
 
-### `frontend/src/pages/Dashboard.tsx`
-This is the heart of the UI (approx 800+ lines).
+The frontend handles complex views leveraging Vite with robust component mapping.
 
-**State Management**:
-*   `file`: The uploaded CSV.
-*   `result`: Stores the JSON response from `/forecast` (products, trends, revenue).
-*   `overview`: (Memoized) aggregates total revenue, growth %, and category-wise stats on the fly to avoid re-calculation.
-*   `activeTab`: Switches between `results` (Table), `alerts` (Cards/List), and `report` (PDF View).
+### Core Screens in `frontend/src/pages/`
+*   **`Dashboard.tsx`**:
+    *   **Function**: A unified interface showing raw statistical facts.
+    *   **Components**: Handles CSV batch uploads. Displays total aggregate Revenue, Category Maps, Avg Weekly Growth chips.
+    *   **Insight Integration**: Single item deep-dives via the "Generate Insights" button which polls GenAI to parse localized single-product actions directly into Hindi/English formats.
+*   **`AgenticHub.tsx`**:
+    *   **Function**: Advanced interactive multi-agent chat terminal.
+    *   **Flow**: Users pass the entire workspace context along with a secondary operational guidelines PDF. The Chat window streams inputs into the `LangGraph` backend generating interactive UI elements in response (Executive Summaries, Simulated Graphs, Ranked Tables) depending on the parsed intent.
+*   **`Landing.tsx` & `Login.tsx`**: Responsible for the visual entry logic and JWT persistent caching.
 
-**Core Functions**:
-*   `runForecast()`:
-    *   Calls API -> Updates `result` -> Fetches `alerts` -> Updates `alerts` state.
-*   `handleInsight(product)`:
-    *   Triggered when clicking the robot icon (🤖) in the table.
-    *   Scrolls to the "Generative AI" section (`scrollIntoView`).
-    *   Calls `/insight` and displays the English/Hindi response with a "Demand Heatmap".
-*   `generateReport()` / `download()`:
-    *   Handles endpoints for CSV export and PDF generation.
+### Functional Components (`frontend/src/components/`)
+*   Provides reusable interactive layers like `ForecastChart.tsx` (using Recharts library bounding logic onto responsive SVG containers) and structural `Layout.tsx` for managing system menus.
 
-**UI Components**:
-*   **KPI Cards**: "Last Week Sales", "AI Forecast", "Growth Trend", "Revenue".
-*   **Insight Section**: Displays "Summary", "Risk Analysis", "Action" in a 3-column grid.
-*   **Heatmap**: A custom grid rendering `rgba` background opacity based on forecast intensity.
-
-### `frontend/src/components/`
-*   **`ForecastChart.tsx`**:
-    *   Uses `recharts`.
-    *   Transforms the flat API data into specific Week 1, Week 2... keys for the `LineChart`.
-    *   Renders two charts: A multi-line trend chart and a total bar chart.
-*   **`Layout.tsx`**:
-    *   Wraps the application.
-    *   Handles the Header (Logo "NIYOJAN"), Navigation, and **Logout Logic** (clearing `localStorage`).
-
-### `frontend/src/api.ts`
-*   Contains `fetch` wrappers.
-*   Automatically appends `Authorization: Bearer <token>` to headers.
-*   Handles base URL config via `import.meta.env.VITE_API_BASE`.
+### API Layer (`frontend/src/api.ts`)
+*   Manages the global `fetch` overrides automatically enforcing `Bearer` token attachments for synchronous security and standardized error catches allowing React components to handle promise failures gracefully without tearing down the UI tree.
 
 ---
 
-## 4. 🗄 Database Schema Detail
+## 4. 🗄 Database Schema Snapshots
 ```sql
 -- forecasts
 id (PK), product, category, last_week_sales, forecast, created_at
@@ -160,11 +106,13 @@ id (PK), product, category, forecast, alert (text), created_at
 id (PK), email (Unique), name, password_hash, salt, role (default 'analyst')
 ```
 
-## 5. � Data Pipeline Summary
+## 5. 🔄 The Agentic Data Flow (Full Cycle)
 
-1.  **Upload**: CSV traverses Frontend → Backend (`main.py`).
-2.  **Inference**: Backend → `utils.forecast_engine` → `lstm` model.
-3.  **Logic**: Backend → `utils.decision_engine` (Rules).
-4.  **Storage**: Backend → `db_manager` → SQLite.
-5.  **GenAI (Optional)**: User Click → Backend → `genai.insight_engine` → Google Gemini → JSON Response → Frontend Display.
-6.  **Reporting**: Database → `utils.pdf_report_generator` → PDF → Email/Download.
+1.  **Ingestion**: CSV (+ Optional PDF) traverses the API to `backend/app/routes/intelligence.py`.
+2.  **Inference**: Forecast sequences pass through `global_lstm_model`, scaling numeric bounds back to readable numbers.
+3.  **Graph Orchestration**:
+    *   The user issues a prompt in the `AgenticHub`.
+    *   Prompt is parsed by `intent_node`.
+    *   Dependent on intent, logic reroutes: Semantic `retrieval` runs RAG, Numerical `simulation` modifies limits dynamically, or `analysis` does pure ranking computations.
+4.  **Actionable Intelligence**: The compiled arrays stream into the `reasoning` node which locks the LLM into producing a 4-week executive planning scheme.
+5.  **Return**: The structured JSON parses backwards to `AgenticChat.tsx` which dynamically paints risk cards and summary tables in real-time.
