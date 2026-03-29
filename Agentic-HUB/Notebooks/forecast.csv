@@ -1,0 +1,9 @@
+Product_ID,Product_Name,Category,Last_Week,Last_Week_Sales,Week_1_Forecast,Week_2_Forecast,Week_3_Forecast,Week_4_Forecast,Week_5_Forecast,Week_1_Final,Week_2_Final,Week_3_Final,Week_4_Final,Week_5_Final
+P001,Rice,Staples,2025-03-02,139,138,132,126,122,119,138,132,126,122,119
+P002,Atta,Staples,2025-03-02,127,132,127,123,120,117,132,127,123,120,117
+P003,Sugar,Staples,2025-03-02,92,91,93,96,97,99,91,93,96,97,99
+P004,Sunflower Oil,Cooking Essentials,2025-03-02,139,122,120,118,116,114,122,120,118,116,114
+P005,Milk,Dairy,2025-03-02,70,85,88,91,94,96,85,88,91,94,96
+P006,Namkeen,Snacks,2025-03-02,105,104,105,105,105,105,104,105,105,105,105
+P007,Soft Drinks,Beverages,2025-03-02,56,78,82,86,89,92,78,82,86,89,92
+P008,Toor Dal,Pulses,2025-03-02,102,114,113,111,110,109,114,113,111,110,109
