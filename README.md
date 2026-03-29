@@ -1,89 +1,134 @@
-# 🌾 Niyojan — Assitive AI for Demand Forecasting & Inventory Optimization
+# 🌾 NIYOJAN: The Agentic AI Supply Chain Intelligence Platform
 
-Niyojan is an **AI-driven demand forecasting platform** that combines **LSTM Time-Series Forecasting** with **GenAI (Google Gemini)** to predict demand, generate actionable inventory insights, and automate reporting.
+**Niyojan** is an enterprise-grade, AI-driven demand forecasting platform that bridges the gap between raw supply chain data and strategic executive action. 
 
-It empowers businesses to optimize stock levels, avoid stockouts/overstocking, and make data-driven decisions through a modern, interactive dashboard.
-
----
-
-##  Key Features
-
-###  **Intelligent Forecasting**
-*   **Time-Series Analysis**: Uses **LSTM (Long Short-Term Memory)** networks to predict sales demand for up to 12 weeks.
-*   **Trend Detection**: Automatically identifies upward (↗), downward (↘), or stable (→) demand trends.
-
-###  **GenAI Insight Engine**
-*   **Powered by Google Gemini**: Analyzes forecast data to provide qualitative insights.
-*   **Actionable Advice**: Suggests **Restock**, **Hold**, or **Reduce** decisions based on predicted demand vs. current inventory.
-*   **Risk Assessment**: Flags inventory decisions as Low, Medium, or High risk.
-
-###  **Operational Dashboard**
-*   **Interactive Visualization**: Visual charts for category-wise demand and product trends using Recharts.
-*   **Real-time Alerts**: Automatic flagging of critical stock levels.
-*   **PDF Reporting**: One-click generation of professional forecast reports with visualizations.
-*   **Email Automation**: Send reports directly to managers via SMTP (Gmail).
+By unifying **LSTM Time-Series Forecasting** with **LangGraph-driven LLMs (Google Gemini)**, Niyojan doesn't just predict future demand—it acts as an autonomous supply chain analyst that diagnoses risks, runs simulations, and drafts actionable procurement plans to optimize stock levels and prevent inventory crises.
 
 ---
 
-##  Repository Structure
+## 🏛️ System Architecture
 
-```
-niyojan-new/
+![System Architecture](assets/system_architecture.png)
+
+Niyojan operates on a robust, multi-tier architecture built for deterministic machine learning inference and complex generational AI workflows:
+
+### 1. Presentation Layer (React + Vite)
+- **Interactive Operational Dashboard**: A purpose-built UI for ingesting CSV batch data and visualizing 12-week demand horizons using `Recharts`.
+- **Agentic Chat Hub**: A real-time terminal where users interact naturally with the LangGraph backend to query forecasts or run data-driven "what-if" simulations.
+
+### 2. Logic & Inference Layer (FastAPI)
+- **Deterministic Inference Engine**: A globally trained TensorFlow/Keras LSTM model dynamically processes incoming multi-variate sequences, generating forward-looking horizons.
+- **Rule-Based Post-Processing**: The system calculates standard deviations, Z-scores, and inventory gaps to deterministically assign risk profiles (High/Medium/Safe).
+
+### 3. Agentic Intelligence Pipeline (LangGraph & RAG)
+- **Intent Routing Node**: Zero-shot LLM classification dynamically routes user queries into four distinct conversational tracks: `Retrieval (RAG)`, `Analysis`, `Simulation`, or `Strategic Planning`.
+- **Retrieval-Augmented Generation**: Integrates FAISS and text embeddings to cross-reference user queries against uploaded operational guidelines (PDFs).
+- **Execution Nodes**: Constrains natural language generation into strict, actionable JSON schemas, outputting 4-week executive plans directly into the UI state.
+
+---
+
+## 🚀 Key Features & Capabilities
+
+### 1. Intelligent Time-Series Forecasting
+*   **Deep Learning Models**: Uses **LSTM (Long Short-Term Memory)** networks to auto-regressively predict sales demand for up to 12 weeks into the future.
+*   **Automated Trend Detection**: Identifies and tags complex mathematical relationships, rendering upward (↗), downward (↘), or stable (→) demand signals.
+
+### 2. LangGraph Agentic Insight Engine
+*   **Powered by Google Gemini 1.5**: Transcends raw numbers by generating qualitative business insights.
+*   **Dynamic Scenario Simulation**: Autonomously recalculates Reorder Points (ROP) and safety stocks on the fly based on conversational "what-if" prompts (e.g., *"What happens if demand spikes by 20% next month?"*).
+*   **Actionable Directives**: Suggests **Restock**, **Hold**, or **Reduce** decisions based on predicted demand vs. current inventory, calculating exact deficit quantities.
+
+### 3. Comprehensive Operational Dashboard
+*   **Unified Visualization**: Dynamic UI components displaying category-wise demand, product trends, and revenue projections.
+*   **Real-time Alerts**: Automatic backend cron jobs or active listeners flag critical stock levels.
+*   **Automated Intelligence Delivery**: Headless PDF generation using `ReportLab` triggered by backend events, seamlessly distributed via robust SMTP protocols to organizational leaders.
+
+---
+
+## 📂 Repository Structure & Code Organization
+
+```text
+niyojan/
 │
 ├── backend/
 │   ├── app/
-│   │   ├── main.py          # FastAPI app entrypoint
-│   │   ├── core/            # Core configurations
-│   │   └── services/        # Business logic services
-│   ├── reports/             # Generated PDF reports storage
-│   └── tests/               # Backend tests
+│   │   ├── main.py          # FastAPI application entrypoint
+│   │   ├── core/            # System configurations & middleware
+│   │   ├── agents/          # LangGraph Nodes, State, & RAG engines
+│   │   ├── routes/          # API endpoint controllers (intelligence.py, etc.)
+│   │   └── services/        # Business logic & utilities
+│   ├── reports/             # Dynamically generated PDF report artifacts
+│   └── tests/               # Backend unit and integration tests
 │
 ├── frontend/                # React + Vite Application
 │   ├── src/
-│   │   ├── components/      # Reusable UI components
-│   │   ├── pages/           # Application pages
-│   │   └── assets/          # Static assets
+│   │   ├── components/      # Reusable UI charts and interactive elements
+│   │   ├── pages/           # Views (Dashboard.tsx, AgenticHub.tsx)
+│   │   └── api.ts           # Centralized HTTP request interceptors
 │   └── package.json
 │
 ├── database/
-│   ├── niyojan.db           # SQLite database
-│   ├── db_manager.py        # Database handling logic
-│   └── schema.sql           # Database schema definitions
+│   ├── niyojan.db           # Configurable SQLite schema footprint
+│   ├── db_manager.py        # Optimized bulk-insert database controllers
+│   └── schema.sql           # Core tables (users, forecasts, alerts)
 │
-├── genai/                   # GenAI & LLM Integration
-│   ├── insight_engine.py    # Logic for generating insights
-│   ├── llm_client.py        # Google Gemini Client wrapper
-│   └── prompt_templates.py  # System & User prompts for LLM
+├── genai/                   # Auxiliary GenAI & LLM Services
+│   ├── insight_engine.py    # Prompts for single-product deep dives
+│   └── llm_client.py        # Gemini Client wrappers
 │
-├── lstm/                    # Forecasting Models
-│   ├── global_lstm_model/   # Trained LSTM model artifacts
-│   └── global_lstm_demand_forecasting.ipynb # Training notebook
+├── lstm/                    # Predictive ML Pipelines
+│   ├── global_lstm_model/   # Trained TensorFlow LSTM artifacts (.pb)
+│   └── notebook.ipynb       # Jupyter workflow for model validation
 │
 ├── utils/
-│   ├── email_handler.py     # SMTP Email utility
-│   ├── decision_engine.py   # Rule-based decision logic
-│   └── pdf_report_generator.py # PDF generation using ReportLab
+│   ├── email_handler.py     # Asynchronous SMTP Email utility
+│   ├── decision_engine.py   # Deterministic alert trigger logics
+│   └── pdf_report_generator.py # ReportLab diagram rendering & generation
 │
-├── .env                     # Environment variables (Sensitive)
-├── pyproject.toml           # Poetry dependency management
-└── README.md                # Project Documentation
+├── .env                     # Local Environment secrets (ignored)
+├── pyproject.toml           # Poetry dependency environments
+└── README.md                # System Documentation (You are here)
 ```
 
 ---
 
-##  Tech Stack
+## 🧰 Technology Stack
 
-| Component | Technology |
-|-----------|------------|
-| **Backend** | Python, FastAPI, Pydantic |
-| **Frontend** | React, Vite, TypeScript, Tailwind CSS, Recharts |
-| **AI / ML** | TensorFlow (LSTM), Google Gemini (GenAI) |
-| **Database** | SQLite |
-| **Reporting** | ReportLab (PDF), Python `email` lib |
+| Component | Framework / Library |
+|-----------|----------------------|
+| **Frontend UI** | React 18, Vite, TypeScript, Tailwind CSS, Recharts |
+| **Backend API** | Python 3.10+, FastAPI, Pydantic, Uvicorn |
+| **Machine Learning** | TensorFlow, Keras, Scikit-learn, Pandas, NumPy |
+| **Agentic AI** | LangGraph, LangChain, Google Gemini API, FAISS |
+| **Storage & Tracking** | SQLite3 (Adaptable via SQLAlchemy) |
+| **Automation** | ReportLab (PDFs), Native Python `smtplib` |
 
 ---
 
-##  Installation & Local Setup
+## ⚙️ Configuration (.env)
+
+Create a `.env` file in the **project root** containing your API configurations:
+
+```ini
+# --- Authentication & Security ---
+JWT_SECRET=your_super_secret_jwt_key
+JWT_EXPIRE_MINUTES=720
+
+# --- GenAI (Google Gemini) Orchestration ---
+GOOGLE_API_KEY=your_google_gemini_api_key
+GEMINI_API_KEY=your_google_gemini_api_key
+
+# --- Email Automation (Gmail App Password) ---
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+SMTP_EMAIL=your_email@gmail.com
+SMTP_PASSWORD=your_gmail_app_password
+```
+*(Note: Use Google App Passwords if 2FA is enabled on the sending account).*
+
+---
+
+## 🛠️ Installation & Local Setup
 
 ### 1. Clone the repository
 ```bash
@@ -91,29 +136,30 @@ git clone https://github.com/Satya-Mohapatro/NIYOJAN-The-Intelligent-Bridge-Betw
 cd NIYOJAN-The-Intelligent-Bridge-Between-Supply-Demand
 ```
 
-### 2. Backend Setup
-You can use **Poetry** (recommended) or **pip**.
+### 2. Backend Initialization
+We highly recommend using **Poetry** for deterministic dependency resolution.
 
-#### Option A: Using Poetry
+**Option A (Poetry):**
 ```bash
 poetry install
 poetry shell
 ```
 
-#### Option B: Using Pip
+**Option B (Pip/Venv):**
 ```bash
 # Create virtual environment
 python -m venv venv
-# Activate it (Windows)
+
+# Activate (Windows)
 venv\Scripts\activate
-# Activate it (Mac/Linux)
+# Activate (Mac/Linux)
 source venv/bin/activate
 
 # Install dependencies
 pip install -r backend/requirements.txt
 ```
 
-### 3. Frontend Setup
+### 3. Frontend Initialization
 ```bash
 cd frontend
 npm install
@@ -121,69 +167,47 @@ npm install
 
 ---
 
-## ⚙️ Configuration
+## 🚀 Running the Platform
 
-Create a `.env` file in the **project root** and add the following keys:
-
-```ini
-# --- Security ---
-JWT_SECRET=your_super_secret_jwt_key
-JWT_EXPIRE_MINUTES=720
-
-# --- GenAI (Google Gemini) ---
-GEMINI_API_KEY=your_google_gemini_api_key
-
-# --- Email (Gmail App Password) ---
-SMTP_SERVER=smtp.gmail.com
-SMTP_PORT=587
-SMTP_EMAIL=your_email@gmail.com
-SMTP_PASSWORD=your_gmail_app_password
-```
-
-> **Note**: For `SMTP_PASSWORD`, generate an **App Password** from your Google Account settings if 2FA is enabled.
-
----
-
-##  Running the Application
-
-### 1. Initialize Database
-Ensure the database is set up before running the app.
+### Step 1: Initialize the Database Pipeline
+Ensure the fundamental tables are constructed.
 ```bash
 cd database
 python create_db.py
 cd ..
 ```
-*This creates a default admin user:* `admin@niyojan.ai` / `admin123`
+*Creates the foundational admin credentials automatically:* `admin@niyojan.ai` / `admin123`
 
-### 2. Start Backend
-From the project root:
+### Step 2: Boot Backend Microservices
+From the project root directory:
 ```bash
-uvicorn backend.app:app --reload
+uvicorn backend.app.main:app --reload
 ```
-*API Docs available at:* [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+*API Swagger Documentation is mounted sequentially at:* [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
-### 3. Start Frontend
-Open a new terminal:
+### Step 3: Serve the UI Client
+Open a new parallel terminal session:
 ```bash
 cd frontend
 npm run dev
 ```
-*App available at:* [http://localhost:5173](http://localhost:5173)
+*Access the client safely at:* [http://localhost:5173](http://localhost:5173)
 
 ---
 
-##  User Guide
+## 📖 Operational User Guide
 
-1.  **Login**: Use the admin credentials (`admin@niyojan.ai` / `admin123`).
-2.  **Upload Data**: Go to the **Dashboard** and upload a CSV file with columns: `Product_ID`, `Product_Name`, `Category`, `Week`, `Sales_Quantity`.
-3.  **Run Forecast**: The system handles the rest—predicting sales and generating alerts.
-4.  **View Insights**: Click on individual products to see **GenAI-powered insights** (Restock/Hold recommendations).
-5.  **Reports**: Navigate to the **Reports** tab to view or email the PDF summary.
+1.  **Authenticate**: Use the local admin credentials (`admin@niyojan.ai` / `admin123`) to enter the system.
+2.  **Upload Operations Data**: Navigate to the **Dashboard** and supply a CSV formatted closely to: `Product_ID`, `Product_Name`, `Category`, `Week`, `Sales_Quantity`.
+3.  **Execute Inference Run**: Click run. The system invokes the LSTM network to deterministically stretch data horizons and triggers rule-based inventory alerts.
+4.  **Agentic Interrogation**: Transition to the **Agentic Hub** to dynamically chat with the data. Upload operations handbooks (PDFs) to align predictions against corporate risk thresholds via RAG protocols.
+5.  **Generate Board-Ready Analytics**: Navigate to the **Reports** tab to render the raw UI data into a finalized, emailable PDF summary utilizing the backend headless reporting pipeline.
 
 ---
 
-##  Contributing
-Contributions are welcome! Please fork the repo and submit a Pull Request.
+## 🧠 System Design Philosophy
 
-##  Support
-If you like Niyojan, please start the repository!
+This platform was built to demonstrate how autonomous, multi-agent workflows (LangGraph) can augment traditional, deterministic machine learning pipelines (TensorFlow/LSTM). By abstracting the complex mathematical limits of LSTM horizons and probabilistic distributions into actionable, plain-language conversational insights, Niyojan directly answers and tackles the "black box" problem of deploying massive AI arrays in traditional enterprise resource planning.
+
+--- 
+**Contributing & Support**: Niyojan is built to scale. PRs focused on replacing backend modules (e.g., swapping SQLite for Postgres/Redis pipelines) or expanding Agentic nodes are welcome. Please reference architectural diagrams before submitting branch merges.
