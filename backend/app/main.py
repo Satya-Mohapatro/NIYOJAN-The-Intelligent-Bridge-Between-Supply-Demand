@@ -72,6 +72,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# V3 — Agentic Intelligence Hub
+try:
+    from .routes.intelligence import router as intelligence_router
+    app.include_router(intelligence_router)
+    logger.info("V3 intelligence router loaded OK")
+except Exception as _e_v3:
+    logger.warning("V3 intelligence router failed to load: %s", _e_v3)
+
 # -------------------------
 # JWT helpers
 # -------------------------
@@ -194,75 +202,88 @@ def build_report_payload_from_db(limit: int = 50):
         logger.error("Error building report payload: %s", e)
         return {"products": 0, "horizon": 0, "forecast_total": 0, "avg_growth": 0}, [], [], []
 
-    # Processing Forecast Data
-    # Group by product to find horizon
-    product_map = {} # productId -> list of forecasts
-    category_map = {} # category -> total forecast
-    last_week_sales_map = {} # productId -> last_week_sales (taking unique)
-    
+    # Processing Forecast Data — store name, category, and weekly_forecasts per product
+    import math as _math
+    product_map      = {}   # pid -> {name, category, lw_sales, weekly_forecasts[]}
+    category_map     = {}   # category -> {products: set(), total: float}
+
     for r in rows:
-        pid = r['product']
-        cat = r['category'] or "Unknown"
-        val = float(r['forecast'])
+        pid      = r['product']
+        cat      = (r.get('category') or 'Unknown').strip()
+        val      = float(r['forecast'])
         lw_sales = float(r.get('last_week_sales') or 0.0)
-        
+        pname    = (r.get('product_name') or r.get('name') or pid).strip()
+
         if pid not in product_map:
-            product_map[pid] = []
-        product_map[pid].append(val)
-        
-        # Store last week sales (overwrite is fine as it should be same for all rows of same product, or use max)
-        last_week_sales_map[pid] = lw_sales
-        
+            product_map[pid] = {'name': pname, 'category': cat,
+                                'lw_sales': lw_sales, 'weekly_forecasts': []}
+        product_map[pid]['weekly_forecasts'].append(val)
+        # keep the best name (non-ID value)
+        if pname != pid:
+            product_map[pid]['name'] = pname
+
         if cat not in category_map:
-            category_map[cat] = {"products": set(), "total": 0}
-        category_map[cat]["products"].add(pid)
-        category_map[cat]["total"] += val
+            category_map[cat] = {'products': set(), 'total': 0.0}
+        category_map[cat]['products'].add(pid)
+        category_map[cat]['total'] += val
 
     # Compute Overview
-    num_products = len(product_map)
-    horizon = len(list(product_map.values())[0]) if num_products > 0 else 0
-    forecast_total = sum(sum(vals) for vals in product_map.values())
-    
-    # Calculate Avg Weekly Growth
-    # Avg Weekly Forecast = Total Forecast / Horizon
-    # Last Week Total = Sum of all products' last week sales
-    total_last_week_sales = sum(last_week_sales_map.values())
-    
-    avg_weekly_forecast = forecast_total / horizon if horizon > 0 else 0
-    
-    avg_growth = 0.0
-    if total_last_week_sales > 0:
-        avg_growth = ((avg_weekly_forecast / total_last_week_sales) - 1) * 100
+    num_products   = len(product_map)
+    horizon        = len(list(product_map.values())[0]['weekly_forecasts']) if num_products > 0 else 0
+    forecast_total = sum(sum(d['weekly_forecasts']) for d in product_map.values())
+
+    # Avg growth — same formula as Dashboard.tsx:
+    # (avg weekly forecast / last week total sales - 1) * 100
+    total_last_week_sales = sum(d['lw_sales'] for d in product_map.values())
+    avg_weekly_forecast   = forecast_total / horizon if horizon > 0 else 0
+    avg_growth = round(((avg_weekly_forecast / total_last_week_sales) - 1) * 100, 2) \
+                 if total_last_week_sales > 0 else 0.0
 
     categories = []
     for cat, data in category_map.items():
+        n = len(data['products'])
         categories.append({
-            "category": cat,
-            "products": len(data["products"]),
-            "total": int(data["total"]),
-            "avgPerProduct": int(data["total"] / len(data["products"])) if data["products"] else 0
+            'category': cat,
+            'products': n,
+            'total': int(data['total']),
+            'avgPerProduct': int(data['total'] / n) if n else 0,
         })
 
-    # Prepare Top Products
-    sorted_prods = sorted(product_map.items(), key=lambda x: sum(x[1]), reverse=True)[:5]
+    # Build enriched top_products with ALL fields needed by PDF generator
+    sorted_prods = sorted(product_map.items(),
+                          key=lambda kv: sum(kv[1]['weekly_forecasts']), reverse=True)
     top_products = []
-    for pid, vals in sorted_prods:
-        total = sum(vals)
-        trend_str = "Stable"
-        if len(vals) > 1:
-            if vals[-1] > vals[0]: trend_str = "Upward ↗"
-            elif vals[-1] < vals[0]: trend_str = "Downward ↘"
+    for pid, info in sorted_prods:
+        wf   = info['weekly_forecasts']
+        tot  = sum(wf)
+        mean = tot / len(wf) if wf else 0
+        std  = _math.sqrt(sum((v - mean) ** 2 for v in wf) / len(wf)) if len(wf) > 1 else mean * 0.05
+        if std == 0:
+            std = mean * 0.05
+        trend     = 'UP' if (len(wf) >= 2 and wf[-1] > wf[0]) else ('DOWN' if len(wf) >= 2 else 'STABLE')
+        trend_pct = round(((wf[-1] - wf[0]) / wf[0] * 100), 2) if (len(wf) >= 2 and wf[0]) else 0.0
         top_products.append({
-            "id": pid,
-            "name": pid, 
-            "trend": f"{int(total)} units ({trend_str})"
+            'id':               pid,
+            'product_id':       pid,
+            'name':             info['name'],
+            'product_name':     info['name'],
+            'category':         info['category'],
+            'weekly_forecasts': wf,
+            'mean_demand':      round(mean, 2),
+            'std_dev':          round(std, 2),
+            'trend':            trend,
+            'trend_pct':        trend_pct,
+            'total_forecast':   int(tot),
+            'lead_time':        2,
+            'current_stock':    round(mean * 2),
+            'last_week_sales':  info['lw_sales'],
         })
 
     overview = {
-        "products": num_products,
-        "horizon": horizon,
-        "forecast_total": int(forecast_total),
-        "avg_growth": round(avg_growth, 2)
+        'products':       num_products,
+        'horizon':        horizon,
+        'forecast_total': int(forecast_total),
+        'avg_growth':     avg_growth,
     }
 
     return overview, categories, top_products, alerts
@@ -548,30 +569,42 @@ def report_endpoint(current_user = Depends(get_current_user)):
 
 def _generate_pdf_for_current_user(current_user):
     overview, categories, top_products, alerts = build_report_payload_from_db()
-    # fallback sample categories/top_products if empty
-    if not categories:
-        categories = [
-            {"category": "Staples", "products": 3, "total": 1317, "avgPerProduct": 439},
-            {"category": "Dairy", "products": 1, "total": 350, "avgPerProduct": 350},
-        ]
-    if not top_products:
-        top_products = [
-            {"name": "Rice", "id": "P001", "trend": "Strong upward trend "},
-            {"name": "Atta", "id": "P002", "trend": "Stable demand "},
-            {"name": "Sugar", "id": "P003", "trend": "Slight dip "},
-        ]
+
     filename = f"niyojan_report_{current_user['email'].replace('@','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     output_path = os.path.join(REPORTS_DIR, filename)
 
     if not PDF_GEN_AVAILABLE:
-        raise HTTPException(status_code=500, detail="PDF generator not available on server (missing utils.pdf_report_generator)")
+        raise HTTPException(status_code=500, detail="PDF generator not available on server")
 
     try:
-        generate_pdf_report(output_path, overview, categories, top_products, alerts) # type: ignore
+        # top_products already has full enriched dicts from build_report_payload_from_db
+        forecast_data = top_products  # already contains all required fields
+
+        grand_total = sum(p.get('total_forecast', 0) for p in forecast_data)
+        horizon     = overview.get('horizon', 0)
+        if not horizon and forecast_data:
+            horizon = len(forecast_data[0].get('weekly_forecasts', []))
+
+        w1_total = sum(p['weekly_forecasts'][0]  for p in forecast_data if p.get('weekly_forecasts'))
+        wn_total = sum(p['weekly_forecasts'][-1] for p in forecast_data if p.get('weekly_forecasts'))
+        avg_growth = round(((wn_total - w1_total) / w1_total * 100), 2) if w1_total > 0 else 0.0
+
+        metadata = {
+            'generated_at':      datetime.now().strftime('%d %B %Y %H:%M'),
+            'products_count':    len(forecast_data),
+            'forecast_horizon':  horizon,
+            'total_forecast':    grand_total,
+            'avg_weekly_growth': avg_growth,
+        }
+
+        pdf_bytes = generate_pdf_report(forecast_data, alerts, metadata)
+        with open(output_path, 'wb') as f:
+            f.write(pdf_bytes)
         return output_path
     except Exception as e:
-        logger.exception("PDF generation failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+        logger.exception('PDF generation failed: %s', e)
+        raise HTTPException(status_code=500, detail=f'PDF generation failed: {e}')
+
 
 @app.get("/report/view", response_class=FileResponse)
 def view_report(current_user = Depends(get_current_user)):
