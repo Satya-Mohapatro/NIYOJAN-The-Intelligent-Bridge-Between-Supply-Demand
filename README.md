@@ -27,7 +27,7 @@ Niyojan operates on a robust, multi-tier architecture built for deterministic ma
 
 ---
 
-## 🚀 Key Features & Capabilities
+##  Key Features & Capabilities
 
 ### 1. Intelligent Time-Series Forecasting
 *   **Deep Learning Models**: Uses **LSTM (Long Short-Term Memory)** networks to auto-regressively predict sales demand for up to 12 weeks into the future.
@@ -45,7 +45,7 @@ Niyojan operates on a robust, multi-tier architecture built for deterministic ma
 
 ---
 
-## 📂 Repository Structure & Code Organization
+##  Repository Structure & Code Organization
 
 ```text
 niyojan/
@@ -92,7 +92,7 @@ niyojan/
 
 ---
 
-## 🧰 Technology Stack
+##  Technology Stack
 
 | Component | Framework / Library |
 |-----------|----------------------|
@@ -105,7 +105,7 @@ niyojan/
 
 ---
 
-## ⚙️ Configuration (.env)
+##  Configuration (.env)
 
 Create a `.env` file in the **project root** containing your API configurations:
 
@@ -128,7 +128,7 @@ SMTP_PASSWORD=your_gmail_app_password
 
 ---
 
-## 🛠️ Installation & Local Setup
+##  Installation & Local Setup
 
 ### 1. Clone the repository
 ```bash
@@ -195,7 +195,7 @@ npm run dev
 
 ---
 
-## 📖 Operational User Guide
+##  Operational User Guide
 
 1.  **Authenticate**: Use the local admin credentials (`admin@niyojan.ai` / `admin123`) to enter the system.
 2.  **Upload Operations Data**: Navigate to the **Dashboard** and supply a CSV formatted closely to: `Product_ID`, `Product_Name`, `Category`, `Week`, `Sales_Quantity`.
@@ -205,7 +205,7 @@ npm run dev
 
 ---
 
-## 🧠 System Design Philosophy
+##  System Design Philosophy
 
 This platform was built to demonstrate how autonomous, multi-agent workflows (LangGraph) can augment traditional, deterministic machine learning pipelines (TensorFlow/LSTM). By abstracting the complex mathematical limits of LSTM horizons and probabilistic distributions into actionable, plain-language conversational insights, Niyojan directly answers and tackles the "black box" problem of deploying massive AI arrays in traditional enterprise resource planning.
 
