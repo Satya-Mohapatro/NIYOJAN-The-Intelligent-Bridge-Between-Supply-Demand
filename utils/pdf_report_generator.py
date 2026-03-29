@@ -1,215 +1,581 @@
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
+"""
+utils/pdf_report_generator.py
+Professional PDF report generator for NIYOJAN — uses ReportLab canvas primitives only.
+Zero emojis, zero external fonts, zero PNG icons.
+"""
+
+import re
+import io
+import math
+from collections import defaultdict
 from datetime import datetime
-import os
 
-# Register your custom font (DejaVu Sans supports Unicode)
-FONT_PATH = os.path.join(os.path.dirname(__file__), "fonts", "DejaVuSans.ttf")
-pdfmetrics.registerFont(TTFont("DejaVuSans", FONT_PATH))
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas as rl_canvas
+from reportlab.lib.colors import HexColor
 
-# ============================
-# Emoji → Icon auto-replacement setup
-# ============================
-def replace_emojis_with_icons(text):
+# ── Color constants ────────────────────────────────────────────────────────────
+COLOR_PRIMARY       = HexColor("#1a2e1a")
+COLOR_ACCENT        = HexColor("#22c55e")
+COLOR_WHITE         = HexColor("#ffffff")
+COLOR_TEXT_DARK     = HexColor("#0f1f0f")
+COLOR_TEXT_MUTED    = HexColor("#6b7280")
+COLOR_RISK_HIGH     = HexColor("#ef4444")
+COLOR_RISK_MEDIUM   = HexColor("#f59e0b")
+COLOR_RISK_LOW      = HexColor("#22c55e")
+COLOR_RISK_BG_HIGH  = HexColor("#fef2f2")
+COLOR_BORDER        = HexColor("#d1fae5")
+COLOR_TABLE_HEADER  = HexColor("#1a2e1a")
+COLOR_TABLE_ROW_ALT = HexColor("#f8fffe")
+COLOR_BAR_COLORS    = [
+    HexColor("#22c55e"), HexColor("#16a34a"), HexColor("#86efac"),
+    HexColor("#4ade80"), HexColor("#bbf7d0"), HexColor("#d1fae5"),
+]
+COLOR_LINE_COLORS   = [
+    HexColor("#22c55e"), HexColor("#3b82f6"),
+    HexColor("#f59e0b"), HexColor("#ef4444"), HexColor("#8b5cf6"),
+]
+
+# ── Font & page constants ──────────────────────────────────────────────────────
+FONT_REGULAR = "Helvetica"
+FONT_BOLD    = "Helvetica-Bold"
+FONT_ITALIC  = "Helvetica-Oblique"
+
+PAGE_WIDTH, PAGE_HEIGHT = A4
+MARGIN_LEFT   = 40
+MARGIN_RIGHT  = 40
+MARGIN_BOTTOM = 50
+CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT
+
+Z_SCORE = 1.65
+
+
+# ── Text cleaner (Bug 6) ───────────────────────────────────────────────────────
+def clean_text(text: str) -> str:
+    """Strip all non-ASCII characters including emoji and broken squares."""
+    if not text:
+        return ""
+    cleaned = re.sub(r'[^\x00-\x7F]+', '', str(text))
+    cleaned = cleaned.replace('\u25a0', '').replace('\u25a1', '').strip()
+    return cleaned
+
+
+# ── Product name reader (Bug 3) ───────────────────────────────────────────────
+def get_product_name(p: dict) -> str:
+    """Try all possible name keys before falling back to product_id."""
+    return (p.get("product_name") or p.get("name") or
+            p.get("Product_Name") or p.get("product_id") or "Unknown")
+
+
+# ── Mean demand reader (Bug 4) ────────────────────────────────────────────────
+def get_mean_demand(p: dict) -> float:
+    wf = p.get("weekly_forecasts", [])
+    return float(p.get("mean_demand") or p.get("mean") or
+                 (sum(wf) / len(wf) if wf else 100))
+
+
+# ── Std dev reader (Bug 8) ────────────────────────────────────────────────────
+def get_std_dev(p: dict) -> float:
+    std = float(p.get("std_dev", 0) or 0)
+    if std == 0:
+        wf = p.get("weekly_forecasts", [])
+        if len(wf) > 1:
+            mean = sum(wf) / len(wf)
+            std = math.sqrt(sum((v - mean) ** 2 for v in wf) / len(wf))
+        if std == 0:
+            std = get_mean_demand(p) * 0.05
+    return std
+
+
+# ── Trend reader (Bug 7) ──────────────────────────────────────────────────────
+def get_trend(p: dict) -> str:
+    raw = p.get("trend", "")
+    if raw and raw.upper() in ("UP", "DOWN", "STABLE"):
+        return raw.upper()
+    wf = p.get("weekly_forecasts", [])
+    if len(wf) >= 2:
+        return "UP" if wf[-1] > wf[0] else "DOWN"
+    return "STABLE"
+
+
+# ── Header bar ────────────────────────────────────────────────────────────────
+def draw_header(c, report_date: str):
+    c.setFillColor(COLOR_PRIMARY)
+    c.rect(0, PAGE_HEIGHT - 60, PAGE_WIDTH, 60, fill=1, stroke=0)
+    c.setFont(FONT_BOLD, 22)
+    c.setFillColor(COLOR_WHITE)
+    c.drawString(MARGIN_LEFT, PAGE_HEIGHT - 36, "NIYOJAN")
+    c.setFont(FONT_REGULAR, 10)
+    c.setFillColor(COLOR_ACCENT)
+    c.drawString(MARGIN_LEFT, PAGE_HEIGHT - 52, "Demand Intelligence Report")
+    c.setFont(FONT_REGULAR, 9)
+    c.setFillColor(COLOR_WHITE)
+    c.drawRightString(MARGIN_LEFT + CONTENT_WIDTH, PAGE_HEIGHT - 44, report_date)
+
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+def draw_footer(c, page_num: int, total_pages: int):
+    fy = MARGIN_BOTTOM - 20
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.line(MARGIN_LEFT, fy + 14, MARGIN_LEFT + CONTENT_WIDTH, fy + 14)
+    c.setFont(FONT_BOLD, 8);  c.setFillColor(COLOR_ACCENT)
+    c.drawString(MARGIN_LEFT, fy, "NIYOJAN")
+    c.setFont(FONT_REGULAR, 8); c.setFillColor(COLOR_TEXT_MUTED)
+    c.drawString(MARGIN_LEFT + 52, fy, "AI-Powered Demand Intelligence Platform")
+    c.setFont(FONT_ITALIC, 7)
+    c.drawCentredString(MARGIN_LEFT + CONTENT_WIDTH / 2, fy,
+                        "Generated by Niyojan AI  |  Confidential")
+    c.setFont(FONT_REGULAR, 8)
+    c.drawRightString(MARGIN_LEFT + CONTENT_WIDTH, fy,
+                      f"Page {page_num} of {total_pages}")
+
+
+# ── Section header ────────────────────────────────────────────────────────────
+def draw_section_header(c, y: float, title: str):
+    c.setFillColor(COLOR_ACCENT)
+    c.rect(MARGIN_LEFT, y - 4, 4, 20, fill=1, stroke=0)
+    c.setFillColor(COLOR_PRIMARY)
+    c.setFont(FONT_BOLD, 13)
+    c.drawString(MARGIN_LEFT + 12, y, title)
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.line(MARGIN_LEFT, y - 8, MARGIN_LEFT + CONTENT_WIDTH, y - 8)
+
+
+# ── Trend indicator triangle (Bug 7) ─────────────────────────────────────────
+def draw_trend_indicator(c, x: float, y: float, trend: str):
+    t = trend.upper()
+    if t == "UP":
+        c.setFillColor(COLOR_RISK_LOW)
+        path = c.beginPath()
+        path.moveTo(x + 5, y + 8); path.lineTo(x, y); path.lineTo(x + 10, y)
+        path.close(); c.drawPath(path, fill=1, stroke=0)
+    elif t == "DOWN":
+        c.setFillColor(COLOR_RISK_HIGH)
+        path = c.beginPath()
+        path.moveTo(x + 5, y); path.lineTo(x, y + 8); path.lineTo(x + 10, y + 8)
+        path.close(); c.drawPath(path, fill=1, stroke=0)
+    else:
+        c.setFillColor(COLOR_TEXT_MUTED)
+        c.rect(x, y + 3, 10, 3, fill=1, stroke=0)
+
+
+# ── Risk badge ────────────────────────────────────────────────────────────────
+def draw_risk_badge(c, x: float, y: float, risk_level: str):
+    rl = str(risk_level)
+    bg = COLOR_RISK_HIGH if rl == "High" else (
+         COLOR_RISK_MEDIUM if "Overstock" in rl else COLOR_RISK_LOW)
+    c.setFillColor(bg)
+    c.roundRect(x, y - 2, 50, 14, 4, fill=1, stroke=0)
+    c.setFillColor(COLOR_WHITE)
+    c.setFont(FONT_BOLD, 7)
+    c.drawCentredString(x + 25, y + 2, clean_text(rl).upper()[:8])
+
+
+# ── KPI cards ─────────────────────────────────────────────────────────────────
+def draw_kpi_cards(c, y: float, n_products: int, horizon: int,
+                   total_forecast: int, avg_growth: float):
+    card_w = (CONTENT_WIDTH - 12) / 4
+    gap = 4
+    cards = [
+        ("PRODUCTS ANALYZED", str(n_products), "SKUs in forecast", None),
+        ("FORECAST HORIZON",  f"{horizon} Weeks", "Planning window", None),
+        ("TOTAL FORECAST",    f"{total_forecast:,}", "units across all SKUs", None),
+        ("AVG WEEKLY GROWTH", f"{avg_growth:+.1f}%", "Period-over-period", avg_growth),
+    ]
+    for i, (label, value, sub, gflag) in enumerate(cards):
+        cx = MARGIN_LEFT + i * (card_w + gap)
+        c.setFillColor(COLOR_WHITE); c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(1); c.rect(cx, y, card_w, 70, fill=1, stroke=1)
+        c.setFillColor(COLOR_ACCENT)
+        c.rect(cx, y + 67, card_w, 3, fill=1, stroke=0)
+        c.setFont(FONT_BOLD, 8); c.setFillColor(COLOR_TEXT_MUTED)
+        c.drawCentredString(cx + card_w / 2, y + 54, label)
+        val_color = (COLOR_RISK_HIGH if (gflag is not None and gflag < 0)
+                     else COLOR_RISK_LOW if (gflag is not None and gflag > 0)
+                     else COLOR_PRIMARY)
+        c.setFont(FONT_BOLD, 16); c.setFillColor(val_color)
+        c.drawCentredString(cx + card_w / 2, y + 32, value)
+        c.setFont(FONT_REGULAR, 8); c.setFillColor(COLOR_TEXT_MUTED)
+        c.drawCentredString(cx + card_w / 2, y + 16, sub)
+
+
+# ── Horizontal bar chart ──────────────────────────────────────────────────────
+def draw_horizontal_bar_chart(c, data: list, x: float, y: float,
+                               width: float, height: float):
+    if not data:
+        return
+    max_val = max(v for _, v in data) or 1
+    bar_h = max((height - 30) / len(data) - 5, 8)
+    for i, (label, value) in enumerate(data):
+        bar_y = y + height - 30 - i * (bar_h + 5) - bar_h
+        bar_w = (value / max_val) * (width - 110)
+        c.setFillColor(COLOR_BAR_COLORS[i % len(COLOR_BAR_COLORS)])
+        c.rect(x + 100, bar_y, bar_w, bar_h, fill=1, stroke=0)
+        c.setFillColor(COLOR_TEXT_DARK); c.setFont(FONT_REGULAR, 8)
+        c.drawRightString(x + 95, bar_y + bar_h / 2 - 4, clean_text(str(label))[:16])
+        c.setFillColor(COLOR_TEXT_MUTED)
+        c.drawString(x + 100 + bar_w + 4, bar_y + bar_h / 2 - 4, f"{int(value):,}")
+    c.setFont(FONT_BOLD, 9); c.setFillColor(COLOR_TEXT_MUTED)
+    c.drawString(x, y + height - 10, "FORECAST VOLUME BY CATEGORY")
+
+
+# ── Multi-line chart (Bug 5 & 10) ─────────────────────────────────────────────
+def draw_line_chart(c, products: list, x: float, y: float,
+                    width: float, height: float):
+    """Multi-line weekly trend chart — reads weekly_forecasts (Bug 5)."""
+    if not products:
+        return
+    # Bug 5 fix: read weekly_forecasts not 'forecasts'
+    all_vals = []
+    for p in products:
+        all_vals.extend(p.get("weekly_forecasts", []))
+    if not all_vals:
+        return
+
+    min_val = min(all_vals) * 0.9
+    max_val = max(all_vals) * 1.1
+    val_range = max_val - min_val or 1
+    n_weeks = max(len(p.get("weekly_forecasts", [])) for p in products)
+
+    chart_x = x + 45;  chart_y = y
+    chart_w = width - 60;  chart_h = height - 30
+
+    c.setFillColor(HexColor("#fafffe"))
+    c.rect(chart_x, chart_y, chart_w, chart_h, fill=1, stroke=0)
+
+    c.setStrokeColor(COLOR_BORDER); c.setLineWidth(0.3)
+    for i in range(5):
+        gy = chart_y + (i / 4) * chart_h
+        c.line(chart_x, gy, chart_x + chart_w, gy)
+        c.setFont(FONT_REGULAR, 7); c.setFillColor(COLOR_TEXT_MUTED)
+        c.drawRightString(chart_x - 4, gy - 3,
+                          f"{int(min_val + (i / 4) * val_range)}")
+
+    # Bug 5 fix: dynamic week labels W1..WN
+    c.setFont(FONT_REGULAR, 7); c.setFillColor(COLOR_TEXT_MUTED)
+    for w in range(n_weeks):
+        lx = chart_x + (w / max(n_weeks - 1, 1)) * chart_w
+        c.drawCentredString(lx, chart_y - 12, f"W{w + 1}")
+
+    for p_idx, product in enumerate(products[:5]):
+        wf = product.get("weekly_forecasts", [])   # Bug 5 key fix
+        if len(wf) < 2:
+            continue
+        color = COLOR_LINE_COLORS[p_idx % len(COLOR_LINE_COLORS)]
+        c.setStrokeColor(color); c.setLineWidth(1.5)
+        path = c.beginPath()
+        for w_idx, val in enumerate(wf):
+            px = chart_x + (w_idx / max(len(wf) - 1, 1)) * chart_w
+            py = chart_y + ((val - min_val) / val_range) * chart_h
+            if w_idx == 0: path.moveTo(px, py)
+            else:          path.lineTo(px, py)
+        c.drawPath(path, fill=0, stroke=1)
+        last_x = chart_x + chart_w
+        last_y = chart_y + ((wf[-1] - min_val) / val_range) * chart_h
+        c.setFillColor(color); c.circle(last_x, last_y, 3, fill=1, stroke=0)
+        c.setFont(FONT_REGULAR, 7)
+        # Bug 3 fix: use product_name
+        c.drawString(last_x + 5, last_y - 3,
+                     get_product_name(product)[:8])
+
+    c.setStrokeColor(COLOR_BORDER); c.setLineWidth(0.5)
+    c.rect(chart_x, chart_y, chart_w, chart_h, fill=0, stroke=1)
+    c.setFont(FONT_BOLD, 9); c.setFillColor(COLOR_TEXT_MUTED)
+    c.drawString(x, y + height + 5, "WEEKLY FORECAST TREND -- TOP 5 PRODUCTS")
+
+
+# ── Generic table ─────────────────────────────────────────────────────────────
+def draw_table(c, rows: list, col_widths: list, x: float, y: float,
+               row_height: float = 22) -> float:
+    for r_idx, row in enumerate(rows):
+        row_y = y - r_idx * row_height
+        if row_y < MARGIN_BOTTOM + 20:
+            break
+        bg   = COLOR_TABLE_HEADER if r_idx == 0 else (
+               COLOR_TABLE_ROW_ALT if r_idx % 2 == 0 else HexColor("#ffffff"))
+        tc   = HexColor("#ffffff") if r_idx == 0 else COLOR_TEXT_DARK
+        font = FONT_BOLD if r_idx == 0 else FONT_REGULAR
+        dx = x
+        for c_idx, (cell, col_w) in enumerate(zip(row, col_widths)):
+            c.setFillColor(bg); c.setStrokeColor(COLOR_BORDER)
+            c.setLineWidth(0.5)
+            c.rect(dx, row_y - row_height, col_w, row_height, fill=1, stroke=1)
+            c.setFillColor(tc); c.setFont(font, 9)
+            txt = clean_text(str(cell) if cell is not None else "")
+            if c_idx > 0:
+                c.drawRightString(dx + col_w - 4, row_y - row_height + 7, txt)
+            else:
+                c.drawString(dx + 4, row_y - row_height + 7, txt)
+            dx += col_w
+    return y - len(rows) * row_height
+
+
+# ── Main function ─────────────────────────────────────────────────────────────
+def generate_pdf_report(forecast_data: list,
+                        alerts: list,
+                        metadata: dict) -> bytes:
     """
-    Automatically replace emojis in text with inline <img> tags for ReportLab.
-    Works only if corresponding PNG icons exist in utils/icons/.
+    Returns professional 3-page PDF as bytes.
+    forecast_data: list of product dicts (from build_report_payload_from_db)
+    alerts:        list of alert dicts from DB
+    metadata:      dict with products_count, forecast_horizon, total_forecast,
+                   avg_weekly_growth, generated_at
     """
-    emoji_map = {
-        "⚠️": "warning",
-        "✅": "check",
-        "📈": "growth",
-        "🧠": "brain",
-        "🕒": "clock",
-        "📊": "chart",
-        "🧩": "puzzle",
-        "🏆": "trophy",
-    }
+    buffer = io.BytesIO()
+    c = rl_canvas.Canvas(buffer, pagesize=A4)
+    total_pages = 3
+    report_date = clean_text(
+        metadata.get("generated_at",
+                     datetime.now().strftime("%d %B %Y  %H:%M")))
 
-    for emoji, icon_name in emoji_map.items():
-        icon_path = os.path.join(os.path.dirname(__file__), "icons", f"{icon_name}.png")
-        if os.path.exists(icon_path):
-            img_tag = f'<img src="{icon_path}" width="14" height="14" valign="middle"/>'
-            text = text.replace(emoji, img_tag)
-    return text
+    # ── Derive safe metadata values ────────────────────────────────────────────
+    n_products = int(metadata.get("products_count", len(forecast_data)))
 
-# ============================
-# Emoji → Icon auto-replacement setup - for ranks
-# ============================
-def get_rank_icon(rank):
-    """Return the correct medal icon path based on product rank (1, 2, 3)."""
-    icon_files = {
-        1: "first.png",
-        2: "second.png",
-        3: "third.png"
-    }
-    file_name = icon_files.get(rank)
-    if not file_name:
-        return None
-    icon_path = os.path.join(os.path.dirname(__file__), "icons", file_name)
-    if os.path.exists(icon_path):
-        return icon_path
-    return None
+    # Bug: horizon must be dynamic (Bug fix)
+    horizon = int(metadata.get("forecast_horizon", 0) or 0)
+    if not horizon and forecast_data:
+        horizon = len(forecast_data[0].get("weekly_forecasts", []))
 
-# ============================
-# PDF Generator
-# ============================
-def generate_pdf_report(output_path, overview, categories, top_products, alerts):
-    """
-    Generates a stylized PDF report with icons replacing emojis.
-    """
-
-    # Setup document
-    doc = SimpleDocTemplate(
-        output_path, pagesize=A4,
-        rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30
+    # Bug 1 fix: sum total_forecast fields, not len*100
+    total_forecast = int(
+        metadata.get("total_forecast", None) or
+        sum(p.get("total_forecast", sum(p.get("weekly_forecasts", [])))
+            for p in forecast_data)
     )
 
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name='Heading1Centered', parent=styles['Heading1'], alignment=1))
-    styles.add(ParagraphStyle(name='SectionTitle', fontSize=14, leading=16, spaceAfter=10, textColor=colors.HexColor("#333")))
-    styles.add(ParagraphStyle(name='BodyTextSmall', fontSize=10, leading=13, textColor=colors.black))
-    styles.add(ParagraphStyle(name='Emphasis', fontSize=11, textColor=colors.HexColor("#2a7f62")))
-
-    elements = []
-
-    # ===== HEADER =====
-    title = Paragraph(replace_emojis_with_icons("🧠 <b>Niyojan Forecast Report</b>"), styles['Heading1Centered'])
-    subtitle = Paragraph("<i>AI-Generated Weekly Insights</i>", styles['BodyText'])
-    date = Paragraph(replace_emojis_with_icons(f"📅 Generated on: {datetime.now().strftime('%d %B %Y, %H:%M')}"), styles['BodyTextSmall'])
-    elements += [title, subtitle, date, Spacer(1, 12)]
-
-    # ===== OVERVIEW =====
-    elements.append(Paragraph(replace_emojis_with_icons("📊 Overview"), styles['SectionTitle']))
-    # growth string formatting
-    growth_val = float(overview.get('avg_growth', 0))
-    growth_str = f"{growth_val:.2f}%"
-    
-    # Context label logic
-    if growth_val < -10:
-        growth_str += " (Seasonal decline probable)"
-    elif growth_val < 0:
-        growth_str += " (Slight dip)"
-    elif growth_val > 10:
-        growth_str += " (Strong upward trend)"
-    
-    overview_data = [
-        ["📦 Products Analyzed", str(overview.get("products", "N/A"))],
-        ["⏱️ Forecast Horizon", f"{overview.get('horizon', 'N/A')} weeks"],
-        ["📈 Total Forecast", f"{overview.get('forecast_total', 0):,} units"],
-        ["📊 Avg Weekly Growth", growth_str],
-    ]
-    overview_table = Table(overview_data, colWidths=[200, 250])
-    overview_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#d9f7e6")),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements += [overview_table, Spacer(1, 12)]
-
-    # ===== CATEGORY-WISE FORECAST =====
-    elements.append(Paragraph(replace_emojis_with_icons("🧩 Category-wise Forecast"), styles['SectionTitle']))
-    cat_data = [["Category", "Products", "Total Forecast", "Avg per Product"]]
-    for c in categories:
-        cat_data.append([c['category'], str(c['products']), str(c['total']), str(c['avgPerProduct'])])
-
-    cat_table = Table(cat_data, colWidths=[150, 80, 100, 100])
-    cat_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#cbe8ff")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-    ]))
-    elements += [cat_table, Spacer(1, 12)]
-
-    # ===== TOP PRODUCT INSIGHTS =====
-    elements.append(Paragraph(replace_emojis_with_icons("🏆 Top Product Insights (Revenue & Trends)"), styles['SectionTitle']))
-    for idx, prod in enumerate(top_products, start=1):
-        rank_icon = get_rank_icon(idx)
-        trend = prod.get("trend", "")
-        # Emphasize growth
-        if "High" in trend or "upward" in trend:
-            trend = f"<b>{trend}</b>"
-        
-        if rank_icon:
-            text = f'<img src="{rank_icon}" width="18" height="18" valign="middle"/> ' \
-                f'<b>{prod["name"]} ({prod["id"]})</b> — {trend}'
-        else:
-            text = f"💡 <b>{prod['name']} ({prod['id']})</b> — {trend}"
-        elements.append(Paragraph(replace_emojis_with_icons(text), styles['BodyTextSmall']))
-    elements.append(Spacer(1, 12))
-
-    # ===== LONG-TERM FORECAST =====
-    # If horizon > 4, maybe add a new table or mentions
-    if overview.get('horizon', 4) > 4:
-        elements.append(Paragraph(replace_emojis_with_icons(f"📅 Extended Forecast ({overview['horizon']} Weeks)"), styles['SectionTitle']))
-        elements.append(Paragraph(
-            "Detailed weekly breakdown available in the attached CSV.",
-            styles['BodyTextSmall']
-        ))
-        elements.append(Spacer(1, 12))
-
-
-    # ===== ALERTS =====
-    elements.append(Paragraph(replace_emojis_with_icons("⚠️ Alerts Summary"), styles['SectionTitle']))
-
-    if alerts:
-        alert_data = [["Product", "Forecast", "Alert", "Created"]]
-        for a in alerts:
-            alert_data.append([
-                a["product"],
-                str(a["forecast"]),
-                a["alert"],
-                a["created_at"]
-            ])
-
-        # ✅ Create and style the table AFTER appending all rows
-        alert_table = Table(alert_data, colWidths=[110, 60, 250, 100])
-        alert_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#ffe8d6")),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('FONTNAME', (0, 0), (-1, -1), 'DejaVuSans'),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ]))
-
-        # ✅ Optional: highlight high-demand rows in red
-        for row_idx, row in enumerate(alert_data[1:], start=1):
-            if "high demand" in row[2].lower():
-                alert_table.setStyle([
-                    ('TEXTCOLOR', (0, row_idx), (-1, row_idx), colors.HexColor("#d90429"))
-                ])
-
-        elements.append(alert_table)
-
+    forecast_total_val = sum(p.get("total_forecast", sum(p.get("weekly_forecasts", []))) for p in forecast_data)
+    last_week_total = sum(p.get("last_week_sales", 0) for p in forecast_data)
+    if last_week_total > 0 and horizon > 0:
+        avg_weekly_forecast = forecast_total_val / horizon
+        avg_growth = round(((avg_weekly_forecast - last_week_total) / last_week_total) * 100, 1)
     else:
-        elements.append(Paragraph(
-            replace_emojis_with_icons("✅ No alerts for this forecast period."),
-            styles['BodyTextSmall']
-        ))
+        avg_growth = 0.0
 
+    # Bug 2 fix: category aggregation using correct keys with fallback
+    cat_map: dict = defaultdict(lambda: {"products": 0, "total": 0.0})
+    for p in forecast_data:
+        cat = (p.get("category") or p.get("Category") or "Unknown").strip()
+        cat_total = (p.get("total_forecast", None) or
+                     sum(p.get("weekly_forecasts", [])) or 0)
+        cat_map[cat]["products"] += 1
+        cat_map[cat]["total"]    += cat_total
 
-    # ===== FOOTER =====
-    elements.append(Spacer(1, 24))
-    footer_text = "🕒 Generated automatically by <b>Niyojan AI Forecast System</b><br/>" \
-                  f"© {datetime.now().year} Niyojan Team"
-    footer = Paragraph(replace_emojis_with_icons(footer_text), styles['Emphasis'])
-    elements.append(footer)
+    categories = sorted(cat_map.items(), key=lambda kv: kv[1]["total"], reverse=True)
+    grand_total = sum(v["total"] for _, v in categories) or 1
 
-    # Build and save
-    doc.build(elements)
-    return output_path
+    # Sort products by total descending for tables/charts
+    sorted_prods = sorted(
+        forecast_data,
+        key=lambda p: p.get("total_forecast", sum(p.get("weekly_forecasts", []))),
+        reverse=True,
+    )
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # PAGE 1: Header + Title + KPI Cards + Category Table + Bar Chart
+    # ──────────────────────────────────────────────────────────────────────────
+    draw_header(c, report_date)
+    draw_footer(c, 1, total_pages)
+
+    y = PAGE_HEIGHT - 90
+    c.setFont(FONT_BOLD, 20); c.setFillColor(COLOR_PRIMARY)
+    c.drawCentredString(MARGIN_LEFT + CONTENT_WIDTH / 2, y,
+                        "FORECAST INTELLIGENCE REPORT")
+    c.setFont(FONT_REGULAR, 11); c.setFillColor(COLOR_TEXT_MUTED)
+    c.drawCentredString(MARGIN_LEFT + CONTENT_WIDTH / 2, y - 18,
+                        "AI-Generated Weekly Insights")
+    c.setStrokeColor(COLOR_ACCENT); c.setLineWidth(2)
+    c.line(MARGIN_LEFT, y - 28, MARGIN_LEFT + CONTENT_WIDTH, y - 28)
+
+    y -= 42
+    draw_kpi_cards(c, y - 70, n_products, horizon, total_forecast, avg_growth)
+    y -= 90
+
+    draw_section_header(c, y, "CATEGORY BREAKDOWN")
+    y -= 30
+
+    cat_rows = [["Category", "Products", "Total Forecast", "Avg per Product", "Share %"]]
+    for cat_name, info in categories:
+        avg_pp = int(info["total"] / info["products"]) if info["products"] else 0
+        share  = (info["total"] / grand_total) * 100
+        cat_rows.append([
+            clean_text(cat_name)[:20],
+            str(info["products"]),
+            f"{int(info['total']):,}",
+            f"{avg_pp:,}",
+            f"{share:.1f}%",
+        ])
+
+    draw_table(c, cat_rows, [120, 60, 100, 100, 70], MARGIN_LEFT, y, 22)
+    y -= len(cat_rows) * 22 + 20
+
+    bar_data = [(clean_text(cn)[:16], int(v["total"])) for cn, v in categories[:8]]
+    chart_h = min(160, len(bar_data) * 24 + 40)
+    draw_horizontal_bar_chart(c, bar_data, MARGIN_LEFT, y - chart_h,
+                              CONTENT_WIDTH, chart_h)
+    c.showPage()
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # PAGE 2: Top Products Table + Line Chart
+    # ──────────────────────────────────────────────────────────────────────────
+    draw_header(c, report_date)
+    draw_footer(c, 2, total_pages)
+
+    y = PAGE_HEIGHT - 90
+    draw_section_header(c, y, "TOP PRODUCTS BY FORECAST VOLUME")
+    y -= 30
+
+    prod_rows = [["Rank", "Product ID", "Product Name", "Total Forecast",
+                  "Trend", "vs W1"]]
+    for rank, p in enumerate(sorted_prods[:8], 1):
+        wf    = p.get("weekly_forecasts", [])
+        tot   = p.get("total_forecast", sum(wf))
+        trend = get_trend(p)   # Bug 7 fix
+        vs_w1 = ""
+        if p.get("trend_pct") is not None:
+            vs_w1 = f"{p['trend_pct']:+.1f}%"
+        elif len(wf) >= 2 and wf[0]:
+            pct = (wf[-1] - wf[0]) / wf[0] * 100
+            vs_w1 = f"{pct:+.1f}%"
+
+        prod_rows.append([
+            str(rank),
+            clean_text(str(p.get("product_id", "")))[:10],
+            clean_text(get_product_name(p))[:16],   # Bug 3 fix
+            f"{int(tot):,}",
+            trend,
+            vs_w1,
+        ])
+
+    draw_table(c, prod_rows, [30, 68, 110, 90, 58, 60], MARGIN_LEFT, y, 22)
+    y -= len(prod_rows) * 22 + 30
+
+    draw_section_header(c, y, "WEEKLY FORECAST TRENDS")
+    y -= 20
+    chart_height = min(180, max(120, y - MARGIN_BOTTOM - 60))
+    draw_line_chart(c, sorted_prods[:5], MARGIN_LEFT, y - chart_height,
+                    CONTENT_WIDTH, chart_height)
+    c.showPage()
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # PAGE 3: Risk Summary + Alerts + Inventory Gap (Bug 9 fix: ALL products)
+    # ──────────────────────────────────────────────────────────────────────────
+    draw_header(c, report_date)
+    draw_footer(c, 3, total_pages)
+
+    y = PAGE_HEIGHT - 90
+    draw_section_header(c, y, "RISK SUMMARY")
+    y -= 30
+
+    high_count      = 0
+    overstock_count = 0
+    stable_count    = 0
+
+    for p in forecast_data:
+        wf = p.get("weekly_forecasts", [])
+        avg_forecast = sum(wf) / horizon if horizon > 0 else (wf[0] if wf else 0)
+        stock = p.get("last_week_sales", 0)
+        
+        if stock <= 0:
+            if avg_forecast > 0:
+                high_count += 1
+            else:
+                stable_count += 1
+        else:
+            ratio = avg_forecast / stock
+            if ratio > 1.2:
+                high_count += 1
+            elif ratio < 0.5:
+                overstock_count += 1
+            else:
+                stable_count += 1
+
+    risk_cards  = [("HIGH RISK", str(high_count), HexColor("#ef4444")),
+                   ("OVERSTOCK", str(overstock_count), HexColor("#f59e0b")),
+                   ("STABLE", str(stable_count), HexColor("#22c55e"))]
+    card_w3 = (CONTENT_WIDTH - 8) / 3
+    for i, (label, count, accent) in enumerate(risk_cards):
+        cx = MARGIN_LEFT + i * (card_w3 + 4)
+        c.setFillColor(HexColor("#ffffff")); c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(1); c.rect(cx, y - 60, card_w3, 60, fill=1, stroke=1)
+        c.setFillColor(accent); c.rect(cx, y - 3, card_w3, 3, fill=1, stroke=0)
+        c.setFont(FONT_BOLD, 22); c.setFillColor(accent)
+        c.drawCentredString(cx + card_w3 / 2, y - 35, count)
+        c.setFont(FONT_BOLD, 8); c.setFillColor(COLOR_TEXT_MUTED)
+        c.drawCentredString(cx + card_w3 / 2, y - 50, label)
+    y -= 80
+
+    draw_section_header(c, y, "ALERTS SUMMARY")
+    y -= 30
+    if alerts:
+        alert_rows = [["Product", "Category", "Forecast", "Status", "Risk", "Created"]]
+        for a in alerts:
+            pid = a.get("product") or a.get("product_id")
+            product = next((p for p in forecast_data if p.get("product_id") == pid), None)
+            if product:
+                wf = product.get("weekly_forecasts", [])
+                avg_forecast = sum(wf) / horizon if horizon > 0 else (wf[0] if wf else 0)
+                stock = product.get("last_week_sales", 0)
+                
+                if stock <= 0:
+                    risk_label = "High" if avg_forecast > 0 else "Stable"
+                else:
+                    ratio = avg_forecast / stock
+                    if ratio > 1.2:
+                        risk_label = "High"
+                    elif ratio < 0.5:
+                        risk_label = "Overstock"
+                    else:
+                        risk_label = "Stable"
+            else:
+                risk_label = "Stable"
+
+            # Bug 6 fix: clean all alert text
+            alert_rows.append([
+                clean_text(str(a.get("product", a.get("product_id", ""))))[:14],
+                clean_text(str(a.get("category", "")))[:12],
+                f"{int(float(a.get('forecast', a.get('forecast_value', 0)) or 0)):,}",
+                clean_text(str(a.get("alert", a.get("alert_type", ""))))[:18],
+                clean_text(risk_label)[:10],
+                clean_text(str(a.get("created_at", "")))[:10],
+            ])
+        draw_table(c, alert_rows, [85, 72, 60, 115, 52, 65], MARGIN_LEFT, y, 20)
+        y -= len(alert_rows) * 20 + 20
+    else:
+        c.setFont(FONT_REGULAR, 10); c.setFillColor(COLOR_TEXT_MUTED)
+        c.drawString(MARGIN_LEFT, y - 14, "No alerts for this forecast period.")
+        y -= 30
+
+    # Inventory Gap — Bug 9 fix: ALL products (no [:5] limit)
+    if y > MARGIN_BOTTOM + 80:
+        draw_section_header(c, y, "INVENTORY GAP ANALYSIS")
+        y -= 30
+        gap_rows = [["Product", "Name", "Mean", "Stock", "Safety", "ROP", "Gap", "Action"]]
+        for p in sorted_prods:   # Bug 9 fix: no slice
+            mean_d  = get_mean_demand(p)     # Bug 4 fix
+            std_d   = get_std_dev(p)         # Bug 8 fix
+            lt      = int(p.get("lead_time", 2))
+            stock   = float(p.get("current_stock", round(mean_d * 2)))
+            safety  = round(Z_SCORE * std_d * math.sqrt(lt), 2)
+            rop     = round(mean_d * lt + safety, 2)
+            gap     = round(rop - stock, 2)
+            if gap > 0:    action = "RESTOCK"
+            elif gap < -50: action = "REDUCE"
+            else:           action = "MONITOR"
+            gap_rows.append([
+                clean_text(str(p.get("product_id", "")))[:8],
+                clean_text(get_product_name(p))[:12],   # Bug 3 fix
+                f"{mean_d:.1f}",
+                f"{int(stock)}",
+                f"{safety:.1f}",
+                f"{rop:.0f}",
+                f"{gap:+.0f}",
+                action,
+            ])
+        draw_table(c, gap_rows, [50, 80, 44, 44, 44, 44, 42, 52],
+                   MARGIN_LEFT, y, 20)
+
+    c.save()
+    buffer.seek(0)
+    return buffer.read()
