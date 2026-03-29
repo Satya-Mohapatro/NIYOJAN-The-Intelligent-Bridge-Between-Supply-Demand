@@ -31,6 +31,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               Login
             </Link>
           )}
+          {token && (
+            <Link
+              className="px-4 py-2 text-sm rounded-lg bg-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.1)] transition-all text-gray-300 hover:text-white flex items-center gap-1.5"
+              to="/hub"
+            >
+              🧠 AI Hub
+            </Link>
+          )}
           {token && initials && (
             <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold shadow-lg border border-emerald-500/30" title="User">
               {initials}

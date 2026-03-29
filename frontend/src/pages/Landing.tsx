@@ -68,9 +68,9 @@ const HeroGraphic = () => {
       <div className="absolute top-0 left-0 right-0 p-4 border-b border-white/5 flex justify-between items-center z-10 bg-[#0F1014]/80 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-mono uppercase tracking-widest text-emerald-400">Live Forecast</span>
+          <span className="text-xs font-mono uppercase tracking-widest text-emerald-400">AI Intelligence Hub</span>
         </div>
-        <div className="text-xs text-gray-500 font-medium">Category: Dairy</div>
+        <div className="text-xs text-gray-500 font-medium">Strategic Planning Active</div>
       </div>
 
       {/* Chart */}
@@ -129,7 +129,7 @@ const HeroGraphic = () => {
       {/* Floating Badge */}
       <div className="absolute bottom-6 left-6 px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-md rounded-lg flex items-center gap-2">
         <ZapIcon className="w-4 h-4 text-emerald-400" />
-        <span className="text-xs font-bold text-emerald-400">Demand Rising +12%</span>
+        <span className="text-xs font-bold text-emerald-400">Procurement Plan Ready</span>
       </div>
     </div>
   );
@@ -156,8 +156,8 @@ export default function Landing() {
               </h1>
 
               <p className="text-lg text-gray-400 mb-8 max-w-lg leading-relaxed">
-                The intelligent demand forecasting platform for modern grocery retail.
-                Minimize waste, optimize stock, and predict tomorrow, today.
+                From demand forecasting to strategic procurement planning.
+                NIYOJAN now thinks, simulates, and decides — not just predicts.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
@@ -175,15 +175,19 @@ export default function Landing() {
                 </a>
               </div>
 
-              <div className="mt-12 flex items-center gap-4 text-sm text-gray-500">
+              <div className="mt-12 flex flex-wrap items-center gap-3 text-sm text-gray-500">
                 <span className="flex items-center gap-1">
                   <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                  Enterprise Ready
+                  LSTM Forecasting
                 </span>
                 <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
-                <span>Secure & Private</span>
+                <span>Agentic AI Planning</span>
                 <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
-                <span>Explainable AI</span>
+                <span>Scenario Simulation</span>
+                <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
+                <span>Explainable Decisions</span>
+                <span className="w-1 h-1 bg-gray-700 rounded-full"></span>
+                <span>Secure &amp; Private</span>
               </div>
             </div>
 
@@ -202,7 +206,8 @@ export default function Landing() {
             <div className="text-center mb-16 max-w-2xl mx-auto">
               <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">Why <span className="text-emerald-400">NIYOJAN?</span></h2>
               <p className="text-gray-400 text-lg">
-                Built for speed and precision. Our AI engines process your sales data locally to ensure maximum privacy and accuracy.
+                Three layers of intelligence working together. Predict demand, detect risk,
+                and generate procurement strategies — all in one platform.
               </p>
             </div>
 
@@ -212,9 +217,9 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-emerald-400">
                   <TargetIcon className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Accurate Forecasting</h3>
+                <h3 className="text-xl font-bold text-white mb-3">LSTM Demand Forecasting</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">
-                  Time-aware demand predictions that account for seasonality, holidays, and local trends.
+                  Time-series deep learning that captures weekly patterns, seasonality, and trend shifts across all your SKUs.
                 </p>
               </div>
 
@@ -223,20 +228,20 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-amber-400">
                   <ZapIcon className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Smart Alerts</h3>
+                <h3 className="text-xl font-bold text-white mb-3">Risk Intelligence Engine</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">
-                  Proactive detection of stock-outs and overstock risks before they impact your bottom line.
+                  Rule-based decision logic classifies every product as High Risk, Overstock, or Stable — with exact reorder thresholds, not guesses.
                 </p>
               </div>
 
-              {/* Feature 3: AI Human Insights (Replaces Category Intelligence) */}
+              {/* Feature 3 */}
               <div className="p-8 rounded-2xl bg-[#0F1014] border border-white/5 hover:border-blue-500/30 hover:-translate-y-1 transition-all duration-300 group shadow-lg">
                 <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-blue-400">
                   <BotIcon className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">AI Human Insights</h3>
+                <h3 className="text-xl font-bold text-white mb-3">Agentic AI Planning Hub</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">
-                  Bilingual, human-readable narratives explaining <i>why</i> demand is changing, powered by Gemini Flash.
+                  Ask planning questions in plain language. The agent simulates demand scenarios, analyzes inventory gaps, and generates 4-week procurement strategies.
                 </p>
               </div>
 
@@ -245,9 +250,61 @@ export default function Landing() {
                 <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform text-purple-400">
                   <FileTextIcon className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">Automated Reports</h3>
+                <h3 className="text-xl font-bold text-white mb-3">Executive Reports</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">
-                  Share-ready PDF summaries and CSV exports generated instantly for your stakeholders.
+                  PDF summaries, CSV exports, and bilingual AI insights — ready to share with your team or present to stakeholders.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* --- How It Works Section --- */}
+        <section className="py-24 border-t border-white/5">
+          <div className="max-w-7xl mx-auto px-6 lg:px-12">
+            <div className="text-center mb-16 max-w-2xl mx-auto">
+              <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">How <span className="text-emerald-400">NIYOJAN</span> Works</h2>
+              <p className="text-gray-400 text-lg">Three progressive intelligence stages. Each builds on the last.</p>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6 relative">
+              {/* Step 1 */}
+              <div className="relative p-8 rounded-2xl bg-[#0F1014] border border-white/5 overflow-hidden">
+                <div className="absolute top-4 right-4 text-7xl font-black text-white opacity-[0.04] leading-none select-none">01</div>
+                <p className="text-xs font-semibold tracking-widest uppercase text-emerald-400 mb-3">Forecast</p>
+                <h3 className="text-xl font-bold text-white mb-3">Upload &amp; Predict</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  Upload your weekly sales CSV. The LSTM model generates multi-week demand forecasts for every product instantly.
+                </p>
+              </div>
+
+              {/* Arrow 1 */}
+              <div className="hidden md:flex items-center justify-center absolute left-1/3 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10">
+                <span className="text-2xl text-emerald-800 font-light">›</span>
+              </div>
+
+              {/* Step 2 */}
+              <div className="relative p-8 rounded-2xl bg-[#0F1014] border border-white/5 overflow-hidden">
+                <div className="absolute top-4 right-4 text-7xl font-black text-white opacity-[0.04] leading-none select-none">02</div>
+                <p className="text-xs font-semibold tracking-widest uppercase text-amber-400 mb-3">Decide</p>
+                <h3 className="text-xl font-bold text-white mb-3">Detect &amp; Classify Risk</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  The Decision Engine compares forecasts against stock levels. Every SKU gets a risk classification — High, Stable, or Overstock — with exact reorder point calculations.
+                </p>
+              </div>
+
+              {/* Arrow 2 */}
+              <div className="hidden md:flex items-center justify-center absolute left-2/3 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10">
+                <span className="text-2xl text-emerald-800 font-light">›</span>
+              </div>
+
+              {/* Step 3 */}
+              <div className="relative p-8 rounded-2xl bg-[#0F1014] border border-white/5 overflow-hidden">
+                <div className="absolute top-4 right-4 text-7xl font-black text-white opacity-[0.04] leading-none select-none">03</div>
+                <p className="text-xs font-semibold tracking-widest uppercase text-blue-400 mb-3">Plan</p>
+                <h3 className="text-xl font-bold text-white mb-3">Ask &amp; Strategize</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  Open the AI Hub. Ask any planning question. The agent simulates scenarios, retrieves context from your reports, and delivers a 4-week executive procurement plan.
                 </p>
               </div>
             </div>
@@ -260,7 +317,7 @@ export default function Landing() {
             <span className="text-xl font-bold text-white tracking-tight">NIYOJAN</span>
           </div>
           <p className="text-gray-500 text-sm mb-6">
-            &copy; 2026 Niyojan. Built with care in India <span className="text-base">🇮🇳</span>
+            &copy; 2026 Niyojan. Built with care in India — V3 Agentic AI Platform
           </p>
           <div className="flex justify-center gap-6 text-sm text-gray-600">
             <a href="#" className="hover:text-emerald-400 transition-colors">Privacy</a>
