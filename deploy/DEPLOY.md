@@ -11,8 +11,14 @@ SSH into your instance:
 ssh -i your-key.pem ubuntu@<your-ec2-public-ip>
 ```
 
-## 3. Run Setup Script
-Clone or copy the `deploy/setup_ec2.sh` script to your instance and run it:
+## 3. Clone Repository
+```bash
+git clone <your-repository-url> niyojan
+cd niyojan
+```
+
+## 4. Run Setup Script
+Run the included setup script to install Docker and Docker Compose:
 ```bash
 chmod +x deploy/setup_ec2.sh
 ./deploy/setup_ec2.sh
@@ -20,12 +26,6 @@ chmod +x deploy/setup_ec2.sh
 After it completes, run to apply docker group changes:
 ```bash
 newgrp docker
-```
-
-## 4. Clone Repository
-```bash
-git clone <your-repository-url> niyojan
-cd niyojan
 ```
 
 ## 5. Configure Environment Variables
